@@ -44,12 +44,10 @@ while True:
                 if len(garrison) > 0:
                     d = random.choice(directions)
                     if gc.can_unload(unit.id, d):
-                        print('unloaded a knight!')
                         gc.unload(unit.id, d)
                         continue
                 elif gc.can_produce_robot(unit.id, bc.UnitType.Knight):
                     gc.produce_robot(unit.id, bc.UnitType.Knight)
-                    print('produced a knight!')
                     continue
 
             # first, let's look for nearby blueprints to work on
@@ -59,11 +57,9 @@ while True:
                 for other in nearby:
                     if unit.unit_type == bc.UnitType.Worker and gc.can_build(unit.id, other.id):
                         gc.build(unit.id, other.id)
-                        print('built a factory!')
                         # move onto the next unit
                         continue
                     if other.team != my_team and gc.is_attack_ready(unit.id) and gc.can_attack(unit.id, other.id):
-                        print('attacked a thing!')
                         gc.attack(unit.id, other.id)
                         continue
 

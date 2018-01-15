@@ -2,7 +2,8 @@ import battlecode as bc
 import random
 import sys
 import traceback
-import queue
+import collections as fast
+import time
 
 print("pystarting")
 
@@ -25,7 +26,11 @@ gc.queue_research(bc.UnitType.Knight)
 
 # STRATEGY CONSTANTS
 FACTORIES_WANTED = 3
+WORKERS_WANTED = 5
 SEEK_KARB_ROUND = 80 # workers pathfind to initial karb until this round
+
+# SPEC CONSTANTS
+REPLICATE_COST = 15
 
 # CODING CONSTANTS
 MY_TEAM = gc.team()
@@ -89,33 +94,51 @@ def tryMineKarbonite(unit):
             return True
     return False
 
-
-# @param goals is a list of nodes denoting goal locations (to be set to 0)
+# @param goals is a list of MapLocations denoting goal locations (to be set to 0)
 def dijkstraMap(goals):
+    flen = 0
     # instantiate initial grid with "infinite" values
     grid = [[100 for i in range(WIDTH)] for k in range(HEIGHT)]
-    frontier = queue.Queue()
+    frontier = fast.deque()
     for g in goals:
-        grid[g[0]][g[1]]=g[2]
-        frontier.put(g)
+        frontier.append(g)
+        flen +=1
 
-    while frontier.qsize() > 0:
+    while flen:
         # pop the first
-        curr = frontier.get()
+        curr = frontier.popleft()
+        flen -= 1        
+        # set the value in the grid
+        grid[curr[0]][curr[1]]=curr[2]
         # check cardinal directions for locations with higher v
         # add the locations to frontier if they have higher
-        addLocIfGreater(curr[0]+1,curr[1],curr[2],grid,frontier)
-        addLocIfGreater(curr[0]-1,curr[1],curr[2],grid,frontier)
-        addLocIfGreater(curr[0],curr[1]+1,curr[2],grid,frontier)
-        addLocIfGreater(curr[0],curr[1]-1,curr[2],grid,frontier)
+        v = curr[2]
+        x = curr[0]+1
+        y = curr[1]
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+            grid[x][y]=v+1
+            frontier.append([x,y,v+1])
+            flen += 1
+        x = curr[0]-1
+        y = curr[1]
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+            grid[x][y]=v+1
+            frontier.append([x,y,v+1])
+            flen += 1
+        x = curr[0]
+        y = curr[1]+1
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+            grid[x][y]=v+1
+            frontier.append([x,y,v+1])
+            flen += 1
+        x = curr[0]
+        y = curr[1]-1
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+            grid[x][y]=v+1
+            frontier.append([x,y,v+1])
+            flen += 1
     return grid
 
-# add node to frontier if its grid value is > 1 greater than v
-def addLocIfGreater(x,y,v,g,f):
-    if 0<=x<WIDTH and 0<=y<HEIGHT and g[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
-        #print("adding" +str(x)+","+str(y)+","+str(v+1)+"prevV = "+str(g[x][y]))
-        g[x][y]=v+1
-        f.put([x,y,v+1])
 
 # Move unit down a dijkstraMap
 def walkDownMap(unit, grid):
@@ -126,77 +149,112 @@ def walkDownMap(unit, grid):
     smallest = grid[x][y]
     adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
     for loc in adjacents:
-        if grid[loc[0]][loc[1]] <= smallest:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] <= smallest:
             smallest = grid[loc[0]][loc[1]]
             smallestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,smallestLoc[0],smallestLoc[1])))
 
+def senseEnemies(loc,radius2):
+    return gc.sense_nearby_units_by_team(loc, radius2, ENEMY_TEAM)
 
+def senseAdjacentEnemies(loc):
+    return senseEnemies(loc,2)
+
+def senseAllEnemies():
+    return senseEnemies(bc.MapLocation(bc.Planet.Earth,0,0),1000)
+
+# Build map towards enemy
+def mapToEnemy():
+    s = time.time()
+    enemies = senseAllEnemies()
+    enemyLocs = []
+    for e in enemies:
+        loc = e.location.map_location()
+        enemyLocs.append([loc.x,loc.y,0])
+    m = dijkstraMap(enemyLocs)
+    #print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in m]))
+    print("build enemy map took " + str(time.time()-s))
+    return m
+
+TOTAL_EARTH_KARBONITE = 0
 # Build a Dijkstra Map for earth's karbonite
 initial_karbonite_nodes = []
 for x in range(WIDTH):
     for y in range(HEIGHT):
-        if EARTH.initial_karbonite_at(bc.MapLocation(bc.Planet.Earth,x,y))>0:
-            initial_karbonite_nodes.append([x,y,-EARTH.initial_karbonite_at(bc.MapLocation(bc.Planet.Earth,x,y))/4])
+        k = EARTH.initial_karbonite_at(bc.MapLocation(bc.Planet.Earth,x,y))
+        if k > 0:
+            initial_karbonite_nodes.append([x,y,int(-k/4)])
+            TOTAL_EARTH_KARBONITE += k
 EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes)
 
+print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
-    print('pyround:', gc.round())
+    print('pyround:', gc.round(), 'time left:', gc.get_time_left_ms(), 'ms')
 
     # frequent try/catches are a good idea
     try:
         # count our units
         numFactories = 0
+        numWorkers = 0
         for unit in gc.my_units():
             if unit.unit_type == bc.UnitType.Factory:
                 numFactories += 1
+            if unit.unit_type == bc.UnitType.Worker:
+                numWorkers += 1
+
+        # Refresh enemy map
+        ENEMY_MAP = mapToEnemy()
         
         # walk through our units:
         for unit in gc.my_units():
 
-            print("ID:"+str(unit.id))
             # first, factory logic
             if unit.unit_type == bc.UnitType.Factory:
                 garrison = unit.structure_garrison()
                 if len(garrison) > 0:
                     d = randMoveDir(unit.id)
                     if gc.can_unload(unit.id, d):
-                        print('unloaded a knight!')
+                        #print('unloaded a knight!')
                         gc.unload(unit.id, d)
                         continue
                 elif gc.can_produce_robot(unit.id, bc.UnitType.Knight):
                     gc.produce_robot(unit.id, bc.UnitType.Knight)
-                    print('produced a knight!')
+                    #print('produced a knight!')
                     continue
 
             # Worker logic
             if unit.unit_type == bc.UnitType.Worker:
                 if unit.location.is_on_map():
                     d = randMoveDir(unit.id)
+                    # 0. Replicate if needed
+                    if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
+                        gc.replicate(unit.id,d)
+                        numWorkers += 1
                     # 1. look for and work on blueprints
-                    if tryBuildFactory(unit):
+                    elif tryBuildFactory(unit):
                         # if we worked on factory, move on to next unit
-                        print("worked on factory")
+                        #print("worked on factory")
                         continue
                     # 2. Look for and mine Karbonite
                     elif tryMineKarbonite(unit):
-                        print("mined")
+                        #print("mined")
                         # we mined and there's still more, stay in place and move on
                         continue
                     # 3. Walk towards karbonite
                     elif ROUND < SEEK_KARB_ROUND:
-                        print("walked down")
+                        #print("walked down")
                         walkDownMap(unit, EARTH_KARBONITE_MAP)
                     # 4. Place blueprints if needed
                     elif numFactories < FACTORIES_WANTED and gc.karbonite() > bc.UnitType.Factory.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Factory, d):
-                        print('blueprinted')
+                        #print('blueprinted')
                         gc.blueprint(unit.id, bc.UnitType.Factory, d)
+                        numFactories += 1
                     # 5. Wander
                     else:
-                        print("wandered")
+                        #print("wandered")
                         tryMove(unit.id,d)
 
 
@@ -204,17 +262,19 @@ while True:
             if unit.unit_type == bc.UnitType.Knight:
                 if unit.location.is_on_map():
                     # Attack in range enemies
-                    adjacent = gc.sense_nearby_units_by_team(unit.location.map_location(), 2, ENEMY_TEAM)
+                    adjacent = senseAdjacentEnemies(unit.location.map_location())
                     for other in adjacent:
                         if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id, other.id):
-                            print('attacked a thing!')
+                            #print('attacked a thing!')
                             gc.attack(unit.id, other.id)
                             break
                     # Move towards enemies
-                    nearby = gc.sense_nearby_units_by_team(unit.location.map_location(), 50, ENEMY_TEAM)
+                    walkDownMap(unit, ENEMY_MAP)
+                    '''nearby = gc.sense_nearby_units_by_team(unit.location.map_location(), 50, ENEMY_TEAM)
                     for other in nearby:
                         tryMove(unit.id,unit.location.map_location().direction_to(other.location.map_location()))
                     wander(unit.id)
+                    '''
             
             # Ranger logic
             #if unit.unit_type == bc.UnitType.Ranger:
