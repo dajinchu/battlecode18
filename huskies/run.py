@@ -4,6 +4,7 @@ import sys
 import traceback
 import collections as fast
 import time
+import math
 
 print("pystarting")
 
@@ -188,6 +189,8 @@ for x in range(WIDTH):
 EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
+
+
 
 while True:
     ROUND = gc.round()
