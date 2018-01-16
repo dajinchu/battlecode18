@@ -175,7 +175,7 @@ def walkDownMap(unit, grid):
     smallest = grid[x][y]
     adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
     for loc in adjacents:
-        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] <= smallest:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] <= smallest and gc.is_occupiable(MapLocation(l.planet,loc[0],loc[1])):
             smallest = grid[loc[0]][loc[1]]
             smallestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,smallestLoc[0],smallestLoc[1])))
@@ -189,7 +189,7 @@ def walkUpMap(unit,grid):
     biggest = grid[x][y]
     adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
     for loc in adjacents:
-        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] >= biggest:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] >= biggest and gc.is_occupiable(MapLocation(l.planet,loc[0],loc[1])):
             biggest = grid[loc[0]][loc[1]]
             biggestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,biggestLoc[0],biggestLoc[1])))
@@ -247,7 +247,36 @@ EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
+op = gc.orbit_pattern()
+a = op.amplitude
+b = (2 * math.pi) / op.period
+c = op.center
 
+def orbitPatternFunction(x):
+    return a * math.sin(b * x) + c + x
+
+def linearSearchForValue(value, beginning):
+    bestValue = 0
+    i = beginning
+    while orbitPatternFunction(i) < value:
+        i += 1
+        print(i)
+    below = orbitPatternFunction(i - 1)
+    above = orbitPatternFunction(i)
+    if abs(below - value) < abs(above - value):
+        return i-1
+    else: return i
+
+def getMin(i):
+    return ((2 * math.pi * i) - math.acos(-1/(a*b)))/b
+
+def getTurnToLeave():
+    min1 = getMin(0)
+    min2 = ((2 * math.pi * 1) - math.acos(-1/(a*b)))/b
+    max1 = -min1
+
+    firstval = orbitPatternFunction(min2)
+    return linearSearchForValue(firstval, int(min1))
 
 while True:
     ROUND = gc.round()

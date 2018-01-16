@@ -1,0 +1,3 @@
+karbonite density evaluation, better than dijkstra? because we need workers to "see" clumps of karbonite
+
+walkdownmap needs to avoid friendly unnits. maybe some kind of a*?
