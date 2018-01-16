@@ -4,12 +4,6 @@ import random
 WIDTH = 50
 HEIGHT = 50
 
-class Node:
-    def __init__(self,x,y,v):
-        self.x = x
-        self.y = y
-        self.v = v
-
 
 # @param goals is a list of MapLocations denoting goal locations (to be set to 0)
 def dijkstraMap(goals):

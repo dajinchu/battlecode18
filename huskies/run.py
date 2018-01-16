@@ -4,6 +4,7 @@ import sys
 import traceback
 import collections as fast
 import time
+import math
 
 print("pystarting")
 
@@ -20,14 +21,15 @@ random.seed(6137)
 
 # let's start off with some research!
 # we can queue as much as we want.
-gc.queue_research(bc.UnitType.Rocket)
-gc.queue_research(bc.UnitType.Worker)
-gc.queue_research(bc.UnitType.Knight)
+# gc.queue_research(bc.UnitType.Rocket)
+gc.queue_research(bc.UnitType.Ranger)
+gc.queue_research(bc.UnitType.Ranger)
+gc.queue_research(bc.UnitType.Ranger)
 
 # STRATEGY CONSTANTS
 FACTORIES_WANTED = 3
 WORKERS_WANTED = 5
-SEEK_KARB_ROUND = 80 # workers pathfind to initial karb until this round
+SEEK_KARB_ROUND = 40 # workers pathfind to initial karb until this round
 
 # SPEC CONSTANTS
 REPLICATE_COST = 15
@@ -41,10 +43,33 @@ ALL_DIRS = list(bc.Direction)
 MOVE_DIRS = list(bc.Direction)
 MOVE_DIRS.remove(bc.Direction.Center)
 
-EARTH = gc.starting_map(bc.Planet.Earth)
-MARS = gc.starting_map(bc.Planet.Mars)
-HEIGHT = EARTH.height
-WIDTH = EARTH.width
+EARTHMAP = gc.starting_map(bc.Planet.Earth)
+MARSMAP = gc.starting_map(bc.Planet.Mars)
+THIS_PLANETMAP = gc.starting_map(gc.planet())
+HEIGHT = EARTHMAP.height
+WIDTH = EARTHMAP.width
+
+# Instead of instantiating new MapLocations constantly, we make them ALL at the start and recycle them
+# I AM NOT SURE IF THIS ACTUALLY SAVES TIME, (doesn't appear to hurt though)
+EARTH_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Earth,i%WIDTH,int(i/WIDTH)) for i in range(WIDTH*HEIGHT)]
+MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars,i%WIDTH,int(i/WIDTH)) for i in range(WIDTH*HEIGHT)]
+def MapLocation(planetEnum,x,y):
+    if planetEnum == bc.Planet.Earth:
+        return EARTH_MAPLOCATIONS[y*WIDTH+x]
+    else:
+        return MARS_MAPLOCATIONS[y*WIDTH+x]
+
+def getWalls(planetmap):
+    impass = set()
+    for x in range(WIDTH):
+        for y in range(HEIGHT):
+            if not planetmap.is_passable_terrain_at(MapLocation(planetmap.planet,x,y)):
+                impass.add(x*WIDTH+y)
+    return impass
+    
+WATER = getWalls(EARTHMAP)
+ROCKY = getWalls(MARSMAP)
+THIS_PLANET_WALLS = WATER if gc.planet()==bc.Planet.Earth else ROCKY
 
 def moveableDirections(unit_id):
     ret = []
@@ -95,7 +120,8 @@ def tryMineKarbonite(unit):
     return False
 
 # @param goals is a list of MapLocations denoting goal locations (to be set to 0)
-def dijkstraMap(goals):
+# @param walls is a Set denoting the places that can't be walked through
+def dijkstraMap(goals,walls):
     flen = 0
     # instantiate initial grid with "infinite" values
     grid = [[100 for i in range(WIDTH)] for k in range(HEIGHT)]
@@ -115,25 +141,25 @@ def dijkstraMap(goals):
         v = curr[2]
         x = curr[0]+1
         y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]-1
         y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]
         y = curr[1]+1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]
         y = curr[1]-1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and EARTH.is_passable_terrain_at(bc.MapLocation(bc.Planet.Earth,x,y)):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
@@ -154,26 +180,58 @@ def walkDownMap(unit, grid):
             smallestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,smallestLoc[0],smallestLoc[1])))
 
+# Move unit up a dijkstraMap
+def walkUpMap(unit,grid):
+    l = unit.location.map_location()
+    x = l.x
+    y = l.y
+    biggestLoc = [x,y]
+    biggest = grid[x][y]
+    adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
+    for loc in adjacents:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] >= biggest:
+            biggest = grid[loc[0]][loc[1]]
+            biggestLoc = loc
+    tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,biggestLoc[0],biggestLoc[1])))
+
+# Move unit towards goal value on dijkstraMap
+def walkToValue(unit,grid,goalValue):
+    loc = unit.location.map_location()
+    x = loc.x
+    y = loc.y
+    if grid[x][y]>goalValue:
+        walkDownMap(unit,grid)
+    elif grid[x][y]<goalValue:
+        walkUpMap(unit,grid)
+    #if currvalue is goalvalue, just don't move
+
 def senseEnemies(loc,radius2):
     return gc.sense_nearby_units_by_team(loc, radius2, ENEMY_TEAM)
 
 def senseAdjacentEnemies(loc):
     return senseEnemies(loc,2)
 
-def senseAllEnemies():
-    return senseEnemies(bc.MapLocation(bc.Planet.Earth,0,0),1000)
+def senseAllEnemies(planet):
+    return senseEnemies(MapLocation(planet,0,0),1000)
+
+def senseAllByType(planet,unitType):
+    return gc.sense_nearby_units_by_type(MapLocation(planet,0,0),1000,unitType)
 
 # Build map towards enemy
-def mapToEnemy():
+def mapToEnemy(planetMap):
     s = time.time()
-    enemies = senseAllEnemies()
+    enemies = senseAllEnemies(planetMap.planet)
+    walls = set()
+    for f in senseAllByType(planetMap.planet, bc.UnitType.Factory):
+        walls.add(f.location.map_location().x*WIDTH+f.location.map_location().y)
+    walls.update(THIS_PLANET_WALLS)
     enemyLocs = []
     for e in enemies:
         loc = e.location.map_location()
         enemyLocs.append([loc.x,loc.y,0])
-    m = dijkstraMap(enemyLocs)
-    #print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in m]))
-    print("build enemy map took " + str(time.time()-s))
+    m = dijkstraMap(enemyLocs,walls)
+    # print('\n'.join([''.join(['{:4}'.format(item) for item in row])for row in m]))
+    #print("build enemy map took " + str(time.time()-s))
     return m
 
 TOTAL_EARTH_KARBONITE = 0
@@ -181,11 +239,11 @@ TOTAL_EARTH_KARBONITE = 0
 initial_karbonite_nodes = []
 for x in range(WIDTH):
     for y in range(HEIGHT):
-        k = EARTH.initial_karbonite_at(bc.MapLocation(bc.Planet.Earth,x,y))
+        k = EARTHMAP.initial_karbonite_at(bc.MapLocation(bc.Planet.Earth,x,y))
         if k > 0:
             initial_karbonite_nodes.append([x,y,int(-k/4)])
             TOTAL_EARTH_KARBONITE += k
-EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes)
+EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
@@ -206,7 +264,7 @@ while True:
                 numWorkers += 1
 
         # Refresh enemy map
-        ENEMY_MAP = mapToEnemy()
+        ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
         
         # walk through our units:
         for unit in gc.my_units():
@@ -220,8 +278,8 @@ while True:
                         #print('unloaded a knight!')
                         gc.unload(unit.id, d)
                         continue
-                elif gc.can_produce_robot(unit.id, bc.UnitType.Knight):
-                    gc.produce_robot(unit.id, bc.UnitType.Knight)
+                elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
+                    gc.produce_robot(unit.id, bc.UnitType.Ranger)
                     #print('produced a knight!')
                     continue
 
@@ -277,8 +335,15 @@ while True:
                     '''
             
             # Ranger logic
-            #if unit.unit_type == bc.UnitType.Ranger:
-            #    if unit.location.is_on_map():
+            if unit.unit_type == bc.UnitType.Ranger:
+                if unit.location.is_on_map():
+                    walkToValue(unit,ENEMY_MAP,math.sqrt(unit.attack_range()))
+                    enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
+                    for e in enemies:
+                        if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
+                            gc.attack(unit.id,e.id)
+                    
+            
             # okay, there weren't any dudes around
             # wander(unit.id)
     except Exception as e:
