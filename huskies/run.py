@@ -175,7 +175,7 @@ def walkDownMap(unit, grid):
     smallest = grid[x][y]
     adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
     for loc in adjacents:
-        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] <= smallest:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] <= smallest and gc.is_occupiable(MapLocation(l.planet,loc[0],loc[1])):
             smallest = grid[loc[0]][loc[1]]
             smallestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,smallestLoc[0],smallestLoc[1])))
@@ -189,7 +189,7 @@ def walkUpMap(unit,grid):
     biggest = grid[x][y]
     adjacents = [[x+1,y+1],[x+1,y],[x+1,y-1],[x,y-1],[x-1,y-1],[x-1,y],[x-1,y+1],[x,y+1]]
     for loc in adjacents:
-        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] >= biggest:
+        if 0<=loc[0]<WIDTH and 0<=loc[1]<HEIGHT and grid[loc[0]][loc[1]] >= biggest and gc.is_occupiable(MapLocation(l.planet,loc[0],loc[1])):
             biggest = grid[loc[0]][loc[1]]
             biggestLoc = loc
     tryMove(unit.id,l.direction_to(bc.MapLocation(l.planet,biggestLoc[0],biggestLoc[1])))
