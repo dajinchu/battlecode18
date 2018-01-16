@@ -247,7 +247,7 @@ EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
-op = gc.orbit_pattern
+op = gc.orbit_pattern()
 a = op.amplitude
 b = (2 * math.pi) / op.period
 c = op.center
@@ -267,10 +267,15 @@ def linearSearchForValue(value, beginning):
         return i-1
     else: return i
 
+def getCurrentInterval(r):
+    min0 = getMin(0)
+    return (r - min0) / op.period
+
 def getMin(i):
     return ((2 * math.pi * i) - math.acos(-1/(a*b)))/b
 
-def getTurnToLeave():
+def getTurnToLeave(interval):
+
     min1 = getMin(0)
     min2 = ((2 * math.pi * 1) - math.acos(-1/(a*b)))/b
     max1 = -min1
@@ -282,7 +287,7 @@ while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
     print('pyround:', gc.round(), 'time left:', gc.get_time_left_ms(), 'ms')
-
+    CURRENT_INTERVAL = getCurrentInterval(ROUND)
     # frequent try/catches are a good idea
     try:
         # count our units
