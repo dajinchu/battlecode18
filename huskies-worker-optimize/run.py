@@ -224,7 +224,7 @@ def mapToEnemy(planetMap):
         loc = e.location.map_location()
         enemyLocs.append([loc.x,loc.y,0])
     if not enemies:
-        enemyLocs=[[unit.location.map_location().x,unit.location.map_location().y] for unit in THIS_PLANETMAP.initial_units if unit.team!=MY_TEAM]
+        enemyLocs=[[unit.location.map_location().x,unit.location.map_location().y,0] for unit in THIS_PLANETMAP.initial_units if unit.team!=MY_TEAM]
     m = dijkstraMap(enemyLocs,walls)
     # print('\n'.join([''.join(['{:4}'.format(item) for item in row])for row in m]))
     #print("build enemy map took " + str(time.time()-s))
@@ -240,7 +240,7 @@ def initKarbonite():
     for x in range(WIDTH):
         for y in range(HEIGHT):
             k = EARTHMAP.initial_karbonite_at(MapLocation(bc.Planet.Earth,x,y))
-            if k > 10:
+            if k >= 5:
                 KARBONITE_LOCS.append([x,y,int(-k/4)])
             TOTAL_EARTH_KARBONITE += k
 
@@ -257,9 +257,9 @@ def updateKarbonite():
 
 
 # STRATEGY CONSTANTS
-FACTORIES_WANTED = int(WIDTH/8)
-WORKERS_WANTED = TOTAL_EARTH_KARBONITE/120
-SEEK_KARB_ROUND = 10 # workers pathfind to initial karb until this round
+FACTORIES_WANTED = int(WIDTH/5)
+WORKERS_WANTED = 8
+SEEK_KARB_ROUND = 10 # workers pathfind to initial karb until this round UNUSED
 
 
 while True:
@@ -306,29 +306,29 @@ while True:
             if unit.unit_type == bc.UnitType.Worker:
                 if unit.location.is_on_map():
                     d = randMoveDir(unit.id)
-                    # 0. Replicate if needed
-                    if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
+                    # 0. Place blueprints if needed
+                    if numFactories < FACTORIES_WANTED and gc.karbonite() > bc.UnitType.Factory.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Factory, d):
+                        #print('blueprinted')
+                        gc.blueprint(unit.id, bc.UnitType.Factory, d)
+                        numFactories += 1
+                    # 1. Replicate if needed
+                    elif numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
                         gc.replicate(unit.id,d)
                         numWorkers += 1
-                    # 1. look for and work on blueprints
+                    # 2. look for and work on blueprints
                     elif tryBuildFactory(unit):
                         # if we worked on factory, move on to next unit
                         #print("worked on factory")
                         continue
-                    # 2. Look for and mine Karbonite
+                    # 3. Look for and mine Karbonite
                     elif tryMineKarbonite(unit):
                         #print("mined")
                         # we mined and there's still more, stay in place and move on
                         continue
-                    # 3. Walk towards karbonite
-                    elif EARTH_KARBONITE_MAP[unit.location.map_location().x][unit.location.map_location().y]<0:
+                    # 4. Walk towards karbonite
+                    elif EARTH_KARBONITE_MAP[unit.location.map_location().x][unit.location.map_location().y]<5:
                         #print("walked down")
                         walkDownMap(unit, EARTH_KARBONITE_MAP)
-                    # 4. Place blueprints if needed
-                    elif numFactories < FACTORIES_WANTED and gc.karbonite() > bc.UnitType.Factory.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Factory, d):
-                        #print('blueprinted')
-                        gc.blueprint(unit.id, bc.UnitType.Factory, d)
-                        numFactories += 1
                     # 5. Wander
                     else:
                         #print("wandered")
