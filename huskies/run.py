@@ -247,6 +247,8 @@ EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
+
+
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
