@@ -247,37 +247,6 @@ EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
-op = gc.orbit_pattern
-a = op.amplitude
-b = (2 * math.pi) / op.period
-c = op.center
-
-def orbitPatternFunction(x):
-    return a * math.sin(b * x) + c + x
-
-def linearSearchForValue(value, beginning):
-    bestValue = 0
-    i = beginning
-    while orbitPatternFunction(i) < value:
-        i += 1
-        print(i)
-    below = orbitPatternFunction(i - 1)
-    above = orbitPatternFunction(i)
-    if abs(below - value) < abs(above - value):
-        return i-1
-    else: return i
-
-def getMin(i):
-    return ((2 * math.pi * i) - math.acos(-1/(a*b)))/b
-
-def getTurnToLeave():
-    min1 = getMin(0)
-    min2 = ((2 * math.pi * 1) - math.acos(-1/(a*b)))/b
-    max1 = -min1
-
-    firstval = orbitPatternFunction(min2)
-    return linearSearchForValue(firstval, int(min1))
-
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
@@ -309,8 +278,8 @@ while True:
                         #print('unloaded a knight!')
                         gc.unload(unit.id, d)
                         continue
-                elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
-                    gc.produce_robot(unit.id, bc.UnitType.Ranger)
+                elif gc.can_produce_robot(unit.id, bc.UnitType.Worker):
+                    gc.produce_robot(unit.id, bc.UnitType.Worker)
                     #print('produced a knight!')
                     continue
 

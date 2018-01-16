@@ -2,3 +2,6 @@ working_dir
 replay*
 viewer_latest*
 viewer_currentInstall.json
+
+.idea/
+server.log
