@@ -376,8 +376,11 @@ while True:
                     walkToValue(unit,ENEMY_MAP,math.sqrt(unit.attack_range()))
                     enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
                     for e in enemies:
+                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snip(unit.id, e.location
+                            gc.begin_snipe(unit.id, e.location)
                         if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
                             gc.attack(unit.id,e.id)
+
                     
             
             # okay, there weren't any dudes around
