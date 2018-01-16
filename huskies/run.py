@@ -247,7 +247,7 @@ EARTH_KARBONITE_MAP = dijkstraMap(initial_karbonite_nodes,WATER)
 
 print('\n'.join([''.join(['{:5}'.format(item) for item in row])for row in EARTH_KARBONITE_MAP]))
 
-op = gc.orbit_pattern
+op = gc.orbit_pattern()
 a = op.amplitude
 b = (2 * math.pi) / op.period
 c = op.center
