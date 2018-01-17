@@ -33,7 +33,8 @@ def linearSearchForValue(value, beginning):
 
 def getCurrentInterval(r):
     min0 = getMin(0)
-    return (r - min0) / op.period
+    exactInterval = (r - min0) / (2 * math.pi / .05)
+    return math.ceil(exactInterval)
 
 
 def getMin(i):
