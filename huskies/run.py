@@ -305,7 +305,7 @@ while True:
                 numFactories += 1
             if unit.unit_type == bc.UnitType.Worker:
                 numWorkers += 1
-            if unit.unit_type == bc.UnitType.Rocket;
+            if unit.unit_type == bc.UnitType.Rocket:
                 numRockets += 1
 
         # Refresh enemy map
