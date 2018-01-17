@@ -279,7 +279,7 @@ def getCurrentInterval(r):
 def getMin(i):
     return ((2 * math.pi * i) - math.acos(-1/(a*b)))/b
 
-def getTurnToLeave(round):
+def shouldILaunch(round):
     MIN1 = getMin(0)
     MIN2 = getMin(1)
     MAX1 = -MIN1
@@ -288,6 +288,7 @@ def getTurnToLeave(round):
     if DONT_LEAVE_AFTER_HERE > (orbitPatternFunction(round) % op.period) > MAX1:
         SHOULD_LAUNCH = False
     else: SHOULD_LAUNCH = True
+    return SHOULD_LAUNCH
 
 while True:
     ROUND = gc.round()
@@ -392,7 +393,13 @@ while True:
                         if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
                             gc.attack(unit.id,e.id)
 
-            
+            # Rocket launching stuff
+            '''
+            if unit.unit_type == bc.UnitType.Rocket:
+                if gc.can_launch_rocket() and unit.structure_garrison() == unit.structure_capacity() and shouldILaunch(ROUND):
+                    MapLocation(bc.planet.Mars, )
+                    gc.launch_rocket(unit.id)
+            '''
             # okay, there weren't any dudes around
             # wander(unit.id)
     except Exception as e:
