@@ -25,11 +25,15 @@ random.seed(6137)
 gc.queue_research(bc.UnitType.Ranger)
 gc.queue_research(bc.UnitType.Ranger)
 gc.queue_research(bc.UnitType.Ranger)
+gc.queue_research(bc.UnitType.Rocket)
+gc.queue_research(bc.UnitType.Rocket)
+
 
 # STRATEGY CONSTANTS
 FACTORIES_WANTED = 3
 WORKERS_WANTED = 5
 SEEK_KARB_ROUND = 40 # workers pathfind to initial karb until this round
+ROCKETS_WANTED = 3
 
 # SPEC CONSTANTS
 REPLICATE_COST = 15
@@ -295,11 +299,14 @@ while True:
         # count our units
         numFactories = 0
         numWorkers = 0
+        numRockets = 0;
         for unit in gc.my_units():
             if unit.unit_type == bc.UnitType.Factory:
                 numFactories += 1
             if unit.unit_type == bc.UnitType.Worker:
                 numWorkers += 1
+            if unit.unit_type == bc.UnitType.Rocket;
+                numRockets += 1
 
         # Refresh enemy map
         ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
@@ -343,11 +350,13 @@ while True:
                     elif ROUND < SEEK_KARB_ROUND:
                         #print("walked down")
                         walkDownMap(unit, EARTH_KARBONITE_MAP)
-                    # 4. Place blueprints if needed
+                    # 4. Place blueprints for factories if needed
                     elif numFactories < FACTORIES_WANTED and gc.karbonite() > bc.UnitType.Factory.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Factory, d):
                         #print('blueprinted')
                         gc.blueprint(unit.id, bc.UnitType.Factory, d)
                         numFactories += 1
+                    elif  numRockets < ROCKETS_WANTED and gc.karbonite() > bc.UnitType.Rocket.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Rocket, d):
+                        gc.blueprint(unit.id, bc.UnitType.Rocket, d)
                     # 5. Wander
                     else:
                         #print("wandered")
@@ -378,7 +387,7 @@ while True:
                     walkToValue(unit,ENEMY_MAP,math.sqrt(unit.attack_range()))
                     enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
                     for e in enemies:
-                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snip(unit.id, e.location
+                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snip(unit.id, e.location):
                             gc.begin_snipe(unit.id, e.location)
                         if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
                             gc.attack(unit.id,e.id)
