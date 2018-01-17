@@ -109,6 +109,16 @@ def tryBuildFactory(unit):
             return not factory.structure_is_built()
     return False
 
+# For Worker, try to build on nearby rocket blueprints
+# return true if we built and build is still in progress
+def tryBuildRocket(unit):
+    adjacent = gc.sense_nearby_units_by_type(unit.location.map_location(), 2, bc.UnitType.Rocket)
+    for rocket in adjacent:
+        # Build rocket if it isn't already finished
+        if not rocket.structure_is_built() and gc.can_build(unit.id, rocket.id):
+            # return true only if rocket is not yet fully built
+            return not rocket.structure_is_built()
+    return False
 
 # For Worker, try to mine nearby karbonite 
 # return true if we mined and there is still more karbonite nearby 
@@ -303,7 +313,7 @@ while True:
                 numFactories += 1
             if unit.unit_type == bc.UnitType.Worker:
                 numWorkers += 1
-            if unit.unit_type == bc.UnitType.Rocket;
+            if unit.unit_type == bc.UnitType.Rocket:
                 numRockets += 1
 
         # Refresh enemy map
@@ -334,28 +344,33 @@ while True:
                     if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
                         gc.replicate(unit.id,d)
                         numWorkers += 1
-                    # 1. look for and work on blueprints
+                    # 1. look for and work on rockets
+                    elif tryBuildRocket(unit):
+                        # if we worked on rocket, move on to next unit
+                        continue
+                    # 2. look for and work on blueprints
                     elif tryBuildFactory(unit):
                         # if we worked on factory, move on to next unit
                         #print("worked on factory")
                         continue
-                    # 2. Look for and mine Karbonite
+                    # 3. Look for and mine Karbonite
                     elif tryMineKarbonite(unit):
                         #print("mined")
                         # we mined and there's still more, stay in place and move on
                         continue
-                    # 3. Walk towards karbonite
+                    # 4. Walk towards karbonite
                     elif ROUND < SEEK_KARB_ROUND:
                         #print("walked down")
                         walkDownMap(unit, EARTH_KARBONITE_MAP)
-                    # 4. Place blueprints for factories if needed
+                    # 5. Place blueprints for rockets if needed
+                    elif  numRockets < ROCKETS_WANTED and gc.karbonite() > bc.UnitType.Rocket.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Rocket, d):
+                        gc.blueprint(unit.id, bc.UnitType.Rocket, d)
+                    # 6. Place blueprints for factories if needed
                     elif numFactories < FACTORIES_WANTED and gc.karbonite() > bc.UnitType.Factory.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Factory, d):
                         #print('blueprinted')
                         gc.blueprint(unit.id, bc.UnitType.Factory, d)
                         numFactories += 1
-                    elif  numRockets < ROCKETS_WANTED and gc.karbonite() > bc.UnitType.Rocket.blueprint_cost() and gc.can_blueprint(unit.id, bc.UnitType.Rocket, d):
-                        gc.blueprint(unit.id, bc.UnitType.Rocket, d)
-                    # 5. Wander
+                    # 7. Wander
                     else:
                         #print("wandered")
                         tryMove(unit.id,d)
@@ -385,10 +400,10 @@ while True:
                     walkToValue(unit,ENEMY_MAP,math.sqrt(unit.attack_range()))
                     enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
                     for e in enemies:
-                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snip(unit.id, e.location):
-                            gc.begin_snipe(unit.id, e.location)
-                        if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
-                            gc.attack(unit.id,e.id)
+                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snipe(unit.id, e.location.map_location()):
+                            gc.begin_snipe(unit.id, e.location.map_location())
+                        #if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
+                         #   gc.attack(unit.id,e.id)
 
                     
             
