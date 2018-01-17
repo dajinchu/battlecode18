@@ -269,19 +269,21 @@ def linearSearchForValue(value, beginning):
 
 def getCurrentInterval(r):
     min0 = getMin(0)
-    return (r - min0) / op.period
+    exactInterval = (r - min0) / op.period
+    return math.ceil(exactInterval)
 
 def getMin(i):
     return ((2 * math.pi * i) - math.acos(-1/(a*b)))/b
 
-def getTurnToLeave(interval):
-
-    min1 = getMin(0)
-    min2 = ((2 * math.pi * 1) - math.acos(-1/(a*b)))/b
-    max1 = -min1
-
-    firstval = orbitPatternFunction(min2)
-    return linearSearchForValue(firstval, int(min1))
+def getTurnToLeave(round):
+    MIN1 = getMin(0)
+    MIN2 = getMin(1)
+    MAX1 = -MIN1
+    FIRST_VAL = orbitPatternFunction(MIN2)
+    DONT_LEAVE_AFTER_HERE = linearSearchForValue(FIRST_VAL, int(MIN1))
+    if DONT_LEAVE_AFTER_HERE > (orbitPatternFunction(round) % op.period) > MAX1:
+        SHOULD_LAUNCH = False
+    else: SHOULD_LAUNCH = True
 
 while True:
     ROUND = gc.round()
@@ -381,7 +383,6 @@ while True:
                         if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
                             gc.attack(unit.id,e.id)
 
-                    
             
             # okay, there weren't any dudes around
             # wander(unit.id)
