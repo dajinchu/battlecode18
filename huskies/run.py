@@ -394,12 +394,16 @@ while True:
                             gc.attack(unit.id,e.id)
 
             # Rocket launching stuff
-            '''
+
             if unit.unit_type == bc.UnitType.Rocket:
                 if gc.can_launch_rocket() and unit.structure_garrison() == unit.structure_capacity() and shouldILaunch(ROUND):
-                    MapLocation(bc.planet.Mars, )
-                    gc.launch_rocket(unit.id)
-            '''
+                    i = 0
+                    while i in ROCKY:
+                        i += 1
+
+                    landingSpot = MapLocation(bc.planet.Mars, i % WIDTH, int(i / WIDTH))
+                    gc.launch_rocket(unit.id, landingSpot)
+
             # okay, there weren't any dudes around
             # wander(unit.id)
     except Exception as e:
