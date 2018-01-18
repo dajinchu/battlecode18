@@ -65,10 +65,10 @@ def MapLocation(planetEnum,x,y):
 
 def getWalls(planetmap):
     impass = set()
-    for x in range(WIDTH):
-        for y in range(HEIGHT):
+    for x in range(planetmap.width):
+        for y in range(planetmap.height):
             if not planetmap.is_passable_terrain_at(MapLocation(planetmap.planet,x,y)):
-                impass.add(x*WIDTH+y)
+                impass.add(x*planetmap.width+y)
     return impass
     
 WATER = getWalls(EARTHMAP)
@@ -128,7 +128,7 @@ def tryMineKarbonite(unit):
 def dijkstraMap(goals,walls):
     flen = 0
     # instantiate initial grid with "infinite" values
-    grid = [[100 for i in range(WIDTH)] for k in range(HEIGHT)]
+    grid = [[100 for i in range(HEIGHT)] for k in range(WIDTH)]
     frontier = fast.deque()
     for g in goals:
         frontier.append(g)
@@ -387,21 +387,24 @@ while True:
                 if unit.location.is_on_map():
                     walkToValue(unit,ENEMY_MAP,math.sqrt(unit.attack_range()))
                     enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
-                    for e in enemies:
-                        if gc.is_begin_snipe_ready(unit.id) and gc.can_begin_snip(unit.id, e.location):
-                            gc.begin_snipe(unit.id, e.location)
-                        if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
-                            gc.attack(unit.id,e.id)
+                    #for e in enemies:
+                    #    if gc.is_attack_ready(unit.id) and  gc.can_attack(unit.id,e.id):
+                    #        gc.attack(unit.id,e.id)
+                    if gc.is_begin_snipe_ready(unit.id):
+                        enemies = senseAllEnemies(THIS_PLANETMAP.planet)
+                        for e in enemies:
+                            if e.health>0 and gc.can_begin_snipe(unit.id, e.location.map_location()):
+                                gc.begin_snipe(unit.id, e.location.map_location())
+                            
 
             # Rocket launching stuff
 
             if unit.unit_type == bc.UnitType.Rocket:
-                if gc.can_launch_rocket() and unit.structure_garrison() == unit.structure_capacity() and shouldILaunch(ROUND):
-                    i = 0
-                    while i in ROCKY:
-                        i += 1
-
-                    landingSpot = MapLocation(bc.planet.Mars, i % WIDTH, int(i / WIDTH))
+                i = 0
+                while i in ROCKY:
+                    i += 1
+                landingSpot = MapLocation(bc.Planet.Mars, i % WIDTH, int(i / WIDTH))
+                if gc.can_launch_rocket(unit.id, landingSpot) and unit.structure_garrison() == unit.structure_capacity() and shouldILaunch(ROUND):
                     gc.launch_rocket(unit.id, landingSpot)
 
             # okay, there weren't any dudes around
