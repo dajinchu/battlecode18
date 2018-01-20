@@ -41,25 +41,29 @@ MOVE_DIRS.remove(bc.Direction.Center)
 EARTHMAP = gc.starting_map(bc.Planet.Earth)
 MARSMAP = gc.starting_map(bc.Planet.Mars)
 THIS_PLANETMAP = gc.starting_map(gc.planet())
-HEIGHT = EARTHMAP.height
-WIDTH = EARTHMAP.width
+HEIGHT = THIS_PLANETMAP.height
+WIDTH = THIS_PLANETMAP.width
+MARS_WIDTH = MARSMAP.width
+MARS_HEIGHT = MARSMAP.height
+EARTH_WIDTH = EARTHMAP.width
+EARTH_HEIGHT = EARTHMAP.height
 
 # Instead of instantiating new MapLocations constantly, we make them ALL at the start and recycle them
 # I AM NOT SURE IF THIS ACTUALLY SAVES TIME, (doesn't appear to hurt though)
-EARTH_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Earth,i%WIDTH,int(i/WIDTH)) for i in range(WIDTH*HEIGHT)]
-MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars,i%WIDTH,int(i/WIDTH)) for i in range(WIDTH*HEIGHT)]
+EARTH_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Earth,i%EARTH_WIDTH,int(i/EARTH_WIDTH)) for i in range(EARTH_WIDTH*EARTH_HEIGHT)]
+MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars,i%MARS_WIDTH,int(i/MARS_WIDTH)) for i in range(MARS_WIDTH*MARS_HEIGHT)]
 def MapLocation(planetEnum,x,y):
     if planetEnum == bc.Planet.Earth:
-        return EARTH_MAPLOCATIONS[y*WIDTH+x]
+        return EARTH_MAPLOCATIONS[y*EARTH_WIDTH+x]
     else:
-        return MARS_MAPLOCATIONS[y*WIDTH+x]
+        return MARS_MAPLOCATIONS[y*MARS_WIDTH+x]
 
 def getWalls(planetmap):
     impass = set()
-    for x in range(WIDTH):
-        for y in range(HEIGHT):
+    for x in range(planetmap.width):
+        for y in range(planetmap.height):
             if not planetmap.is_passable_terrain_at(MapLocation(planetmap.planet,x,y)):
-                impass.add(x*WIDTH+y)
+                impass.add(y*planetmap.width+x)
     return impass
     
 WATER = getWalls(EARTHMAP)
@@ -175,25 +179,25 @@ def dijkstraMap(goals,walls):
         v = curr[2]
         x = curr[0]+1
         y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (y*WIDTH+x in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]-1
         y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (y*WIDTH+x in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]
         y = curr[1]+1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (y*WIDTH+x in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
         x = curr[0]
         y = curr[1]-1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
+        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (y*WIDTH+x in walls):
             grid[x][y]=v+1
             frontier.append([x,y,v+1])
             flen += 1
@@ -258,7 +262,7 @@ def mapToEnemy(planetMap):
     enemyLocs = []
     walls = set()
     for f in senseAllByType(planetMap.planet, bc.UnitType.Factory):
-        walls.add(f.location.map_location().x*WIDTH+f.location.map_location().y)
+        walls.add(f.location.map_location().y*WIDTH+f.location.map_location().x)
     walls.update(THIS_PLANET_WALLS)
     for e in enemies:
         loc = e.location.map_location()
@@ -351,6 +355,9 @@ enemyMapBench = Benchmark("Creating enemy map")
 rangerMapBench = Benchmark("Creating ranger map")
 factoryMapBench = Benchmark("Creating factory map")
 karboniteMapBench = Benchmark("Creating karbonite map")
+rangerBench = Benchmark("Handling rangers")
+factoryBench = Benchmark("Handling factories")
+workerBench = Benchmark("Handling workers")
 
 
 # STRATEGY CONSTANTS
@@ -425,6 +432,7 @@ while True:
         if ROUND % 10 == 1:
             EARTH_KARBONITE_MAP = updateKarbonite()
 
+        rangerBench.start()
         for unit in rangers:
             # Ranger logic
             if unit.location.is_on_map():
@@ -433,7 +441,9 @@ while True:
                 for e in enemies:
                     if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id,e.id):
                         gc.attack(unit.id,e.id)
+        rangerBench.end()
 
+        factoryBench.start()
         # Factory logic
         for unit in factories:
             garrison = unit.structure_garrison()
@@ -447,7 +457,10 @@ while True:
                 gc.produce_robot(unit.id, bc.UnitType.Ranger)
                 #print('produced a knight!')
                 continue
+        factoryBench.end()
 
+
+        workerBench.start()
         # Worker logic
         numWorkers = len(workers)
         numFactories = len(factories)
@@ -484,6 +497,7 @@ while True:
                 else:
                     #print("wandered")
                     tryMove(unit,d)
+        workerBench.end()
 
 
         for unit in knights:
