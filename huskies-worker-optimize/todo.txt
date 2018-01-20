@@ -1,3 +1,16 @@
 karbonite density evaluation, better than dijkstra? because we need workers to "see" clumps of karbonite
 
+pathfind diagonally
+
 walkdownmap needs to avoid friendly unnits. maybe some kind of a*?
+
+Scouting
+
+Remember enemy general location
+
+Prioritize attacks. Hit the right unit
+Coordinate attacks. Attack same unit and eliminate them
+
+Code for other units
+
+Going to mars

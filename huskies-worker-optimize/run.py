@@ -327,7 +327,30 @@ def updateKarbonite():
         TOTAL_EARTH_KARBONITE += k[2]
     return dijkstraMap(KARBONITE_LOCS,WATER)
 
+class Benchmark:
+    canStart = True
 
+    def __init__(self, name):
+        self.name = name
+
+    def start(self):
+        if self.canStart:
+            self.canStart = False
+            self.startt = time.time()
+        else:
+            print("CALLED BENCHMARK.START AGAIN BEFORE CALLING .END()")
+
+    def end(self):
+        print(self.name, "took ", 1000*(time.time()-self.startt), "ms")
+        self.canStart = True
+
+
+# Create benchmarks for different parts
+turnBench = Benchmark("Full turn")
+enemyMapBench = Benchmark("Creating enemy map")
+rangerMapBench = Benchmark("Creating ranger map")
+factoryMapBench = Benchmark("Creating factory map")
+karboniteMapBench = Benchmark("Creating karbonite map")
 
 
 # STRATEGY CONSTANTS
@@ -340,31 +363,51 @@ while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
     print('pyround:', gc.round(), 'time left:', gc.get_time_left_ms(), 'ms')
+    turnBench.start()
 
     # frequent try/catches are a good idea
     try:
-        # count our units
-        numFactories = 0
+        # sort our units
+        factories = []
         factoryBlueprints = []
-        numWorkers = 0
-        numRangers = 0
-        rangerAtkRange = 0 # This is dumb, but you need at least one ranger to find the atk range of the ranger
+        workers = []
+        rangers = []
+        knights = []
+        mages = []
+        healers = []
         for unit in gc.my_units():
-            if unit.unit_type == bc.UnitType.Factory:
-                numFactories += 1
+            type = unit.unit_type
+            if type == bc.UnitType.Factory:
+                factories.append(unit)
                 if not unit.structure_is_built():
                     factoryBlueprints.append(unit)
-            if unit.unit_type == bc.UnitType.Worker:
-                numWorkers += 1
-            if unit.unit_type == bc.UnitType.Ranger:
-                numRangers += 1
-                rangerAtkRange = unit.attack_range()
+            elif type == bc.UnitType.Worker:
+                workers.append(unit)
+            elif type == bc.UnitType.Ranger:
+                rangers.append(unit)
+            elif type == bc.UnitType.Knight:
+                knights.append(unit)
+            elif type == bc.UnitType.Mage:
+                mages.append(unit)
+            elif type == bc.UnitType.Healer:
+                healers.append(unit)
+
+        # update the ranger atkRange, because it can change with research.
+        # SLIGHTLY BETTER TO UPDATE THIS JUST WHEN RESEARCH FINISHES INSTEAD OF POLLING EVERY TURN
+        rangerAtkRange = 0  # This is dumb, but you need at least one ranger to find the atk range of the ranger
+        if rangers:
+            rangerAtkRange = rangers[0].attack_range()
+
 
         # Refresh enemy map
+        enemyMapBench.start()
         ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
+        enemyMapBench.end()
         RANGER_MAP = []
-        if numRangers > 0:
+        if rangers:
+            rangerMapBench.start()
             RANGER_MAP = rangerMap(THIS_PLANETMAP,rangerAtkRange)
+            rangerMapBench.end()
 
         # refresh worker wanted
         WORKERS_WANTED = max(0,8-ROUND/20)
@@ -372,94 +415,93 @@ while True:
         # refresh factory map
         FACTORY_MAP = []
         if factoryBlueprints:
+            factoryMapBench.start()
             factLocs = [f.location.map_location() for f in factoryBlueprints]
             FACTORY_MAP = adjacentToMap(factLocs)
+            factoryMapBench.end()
 
         
         # refresh karbonite map
         if ROUND % 10 == 1:
             EARTH_KARBONITE_MAP = updateKarbonite()
 
-        
-        # walk through our units:
-        for unit in gc.my_units():
-
-            # first, factory logic
-            if unit.unit_type == bc.UnitType.Factory:
-                garrison = unit.structure_garrison()
-                if len(garrison) > 0:
-                    d = randMoveDir(unit)
-                    if gc.can_unload(unit.id, d):
-                        #print('unloaded a knight!')
-                        gc.unload(unit.id, d)
-                        continue
-                elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
-                    gc.produce_robot(unit.id, bc.UnitType.Ranger)
-                    #print('produced a knight!')
-                    continue
-
-            # Worker logic
-            if unit.unit_type == bc.UnitType.Worker:
-                if unit.location.is_on_map():
-                    d = randMoveDir(unit)
-                    # 1. Replicate if needed
-                    if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
-                        gc.replicate(unit.id,d)
-                        numWorkers += 1
-                    # 2. look for and work on blueprints
-                    elif tryBuildFactory(unit):
-                        # if we worked on factory, move on to next unit
-                        #print("worked on factory")
-                        continue
-                    elif FACTORY_MAP and FACTORY_MAP[unit.location.map_location().x][unit.location.map_location().y]<4:
-                        walkDownMap(unit,FACTORY_MAP)
-                        continue
-                    # 0. Place blueprints if needed
-                    elif numFactories < FACTORIES_WANTED and tryBlueprintFactory(unit):
-                        #print('blueprinted')
-                        numFactories += 1
-                        continue
-                    # 3. Look for and mine Karbonite
-                    elif tryMineKarbonite(unit):
-                        #print("mined")
-                        # we mined and there's still more, stay in place and move on
-                        continue
-                    # 4. Walk towards karbonite
-                    elif EARTH_KARBONITE_MAP[unit.location.map_location().x][unit.location.map_location().y]<5:
-                        #print("walked down")
-                        walkDownMap(unit, EARTH_KARBONITE_MAP)
-                    # 5. Wander
-                    else:
-                        #print("wandered")
-                        tryMove(unit,d)
-
-
-            # Knight logic
-            if unit.unit_type == bc.UnitType.Knight:
-                if unit.location.is_on_map():
-                    # Attack in range enemies
-                    adjacent = senseAdjacentEnemies(unit.location.map_location())
-                    for other in adjacent:
-                        if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id, other.id):
-                            #print('attacked a thing!')
-                            gc.attack(unit.id, other.id)
-                            break
-                    # Move towards enemies
-                    walkDownMap(unit, ENEMY_MAP)
-                    '''nearby = gc.sense_nearby_units_by_team(unit.location.map_location(), 50, ENEMY_TEAM)
-                    for other in nearby:
-                        tryMove(unit,unit.location.map_location().direction_to(other.location.map_location()))
-                    wander(unit.id)
-                    '''
-            
+        for unit in rangers:
             # Ranger logic
-            if unit.unit_type == bc.UnitType.Ranger:
-                if unit.location.is_on_map():
-                    walkDownMap(unit,RANGER_MAP)
-                    enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
-                    for e in enemies:
-                        if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id,e.id):
-                            gc.attack(unit.id,e.id)
+            if unit.location.is_on_map():
+                walkDownMap(unit,RANGER_MAP)
+                enemies = senseEnemies(unit.location.map_location(),unit.attack_range())
+                for e in enemies:
+                    if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id,e.id):
+                        gc.attack(unit.id,e.id)
+
+        # Factory logic
+        for unit in factories:
+            garrison = unit.structure_garrison()
+            if len(garrison) > 0:
+                d = randMoveDir(unit)
+                if gc.can_unload(unit.id, d):
+                    #print('unloaded a knight!')
+                    gc.unload(unit.id, d)
+                    continue
+            elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
+                gc.produce_robot(unit.id, bc.UnitType.Ranger)
+                #print('produced a knight!')
+                continue
+
+        # Worker logic
+        numWorkers = len(workers)
+        numFactories = len(factories)
+        for unit in workers:
+            if unit.location.is_on_map():
+                d = randMoveDir(unit)
+                # 1. Replicate if needed
+                if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id,d):
+                    gc.replicate(unit.id,d)
+                    numWorkers += 1
+                # 2. look for and work on blueprints
+                elif tryBuildFactory(unit):
+                    # if we worked on factory, move on to next unit
+                    #print("worked on factory")
+                    continue
+                elif FACTORY_MAP and FACTORY_MAP[unit.location.map_location().x][unit.location.map_location().y]<4:
+                    walkDownMap(unit,FACTORY_MAP)
+                    continue
+                # 0. Place blueprints if needed
+                elif numFactories < FACTORIES_WANTED and tryBlueprintFactory(unit):
+                    #print('blueprinted')
+                    numFactories += 1
+                    continue
+                # 3. Look for and mine Karbonite
+                elif tryMineKarbonite(unit):
+                    #print("mined")
+                    # we mined and there's still more, stay in place and move on
+                    continue
+                # 4. Walk towards karbonite
+                elif EARTH_KARBONITE_MAP[unit.location.map_location().x][unit.location.map_location().y]<5:
+                    #print("walked down")
+                    walkDownMap(unit, EARTH_KARBONITE_MAP)
+                # 5. Wander
+                else:
+                    #print("wandered")
+                    tryMove(unit,d)
+
+
+        for unit in knights:
+            if unit.location.is_on_map():
+                # Attack in range enemies
+                adjacent = senseAdjacentEnemies(unit.location.map_location())
+                for other in adjacent:
+                    if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id, other.id):
+                        #print('attacked a thing!')
+                        gc.attack(unit.id, other.id)
+                        break
+                # Move towards enemies
+                walkDownMap(unit, ENEMY_MAP)
+                '''nearby = gc.sense_nearby_units_by_team(unit.location.map_location(), 50, ENEMY_TEAM)
+                for other in nearby:
+                    tryMove(unit,unit.location.map_location().direction_to(other.location.map_location()))
+                wander(unit.id)
+                '''
                     
             
             # okay, there weren't any dudes around
@@ -469,6 +511,7 @@ while True:
         # use this to show where the error was
         traceback.print_exc()
 
+    turnBench.end()
     # send the actions we've performed, and wait for our next turn.
     gc.next_turn()
 
