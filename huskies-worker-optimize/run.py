@@ -26,6 +26,9 @@ gc.queue_research(bc.UnitType.Ranger)
 gc.queue_research(bc.UnitType.Ranger)
 gc.queue_research(bc.UnitType.Ranger)
 
+# disable timing logs for production code
+TIMING_DISABLED = False
+
 # SPEC CONSTANTS
 REPLICATE_COST = 15
 
@@ -276,7 +279,6 @@ def mapToEnemy(planetMap):
 
 # Build map for rangers where goals are in range
 def rangerMap(planetMap, atkRange):
-    start = time.time()
     enemies = senseAllEnemies(planetMap.planet)
     enemyLocs = []
     walls = set()
@@ -311,7 +313,7 @@ EARTH_KARBONITE_MAP = []
 # Iterate through all spots to find karbonite
 # count total karbonite and record their locations and amounts
 def initKarbonite():
-    TOTAL_EARTH_KARBONITE = 0
+    global TOTAL_EARTH_KARBONITE
     for x in range(WIDTH):
         for y in range(HEIGHT):
             k = EARTHMAP.initial_karbonite_at(MapLocation(bc.Planet.Earth,x,y))
@@ -323,10 +325,10 @@ initKarbonite()
 
 # Build a Dijkstra Map for earth's karbonite using vision and initial
 def updateKarbonite():
+    global TOTAL_EARTH_KARBONITE
     KARBONITE_LOCS[:] = [k for k in KARBONITE_LOCS if
                            not gc.can_sense_location(MapLocation(bc.Planet.Earth,k[0],k[1]))
                            or gc.karbonite_at(MapLocation(bc.Planet.Earth,k[0],k[1]))]
-    TOTAL_EARTH_KARBONITE = 0
     for k in KARBONITE_LOCS:
         TOTAL_EARTH_KARBONITE += k[2]
     return dijkstraMap(KARBONITE_LOCS,WATER)
@@ -338,6 +340,8 @@ class Benchmark:
         self.name = name
 
     def start(self):
+        if TIMING_DISABLED:
+            return
         if self.canStart:
             self.canStart = False
             self.startt = time.time()
@@ -345,6 +349,8 @@ class Benchmark:
             print("CALLED BENCHMARK.START AGAIN BEFORE CALLING .END()")
 
     def end(self):
+        if TIMING_DISABLED:
+            return
         print(self.name, "took ", 1000*(time.time()-self.startt), "ms")
         self.canStart = True
 
@@ -353,18 +359,13 @@ class Benchmark:
 turnBench = Benchmark("Full turn")
 enemyMapBench = Benchmark("Creating enemy map")
 rangerMapBench = Benchmark("Creating ranger map")
+healerMapBench = Benchmark("Creating healer map")
 factoryMapBench = Benchmark("Creating factory map")
 karboniteMapBench = Benchmark("Creating karbonite map")
 rangerBench = Benchmark("Handling rangers")
+healerBench = Benchmark("Handling healers")
 factoryBench = Benchmark("Handling factories")
 workerBench = Benchmark("Handling workers")
-
-
-# STRATEGY CONSTANTS
-FACTORIES_WANTED = int(WIDTH/5)
-WORKERS_WANTED = 8
-SEEK_KARB_ROUND = 10 # workers pathfind to initial karb until this round UNUSED
-
 
 while True:
     ROUND = gc.round()
@@ -398,6 +399,10 @@ while True:
                 mages.append(unit)
             elif type == bc.UnitType.Healer:
                 healers.append(unit)
+        numWorkers = len(workers)
+        numFactories = len(factories) + len(factoryBlueprints)
+        numRangers = len(rangers)
+        numHealers = len(healers)
 
         # update the ranger atkRange, because it can change with research.
         # SLIGHTLY BETTER TO UPDATE THIS JUST WHEN RESEARCH FINISHES INSTEAD OF POLLING EVERY TURN
@@ -416,8 +421,23 @@ while True:
             RANGER_MAP = rangerMap(THIS_PLANETMAP,rangerAtkRange)
             rangerMapBench.end()
 
-        # refresh worker wanted
-        WORKERS_WANTED = max(0,8-ROUND/20)
+        # Healer map. Directs healers to get near rangers to heal them
+        HEALER_MAP = []
+        HURT_ALLIES = []
+        if healers:
+            healerMapBench.start()
+            goals = []
+            for ally in rangers:
+                if ally.health < ally.max_health:
+                    loc = ally.location.map_location()
+                    goals.append([loc.x, loc.y, ally.health - ally.max_health])
+                    HURT_ALLIES.append(ally.id)
+            HEALER_MAP = dijkstraMap(goals, THIS_PLANET_WALLS)
+            healerMapBench.end()
+
+        # refresh units_wanted
+        WORKERS_WANTED = 8 + int(TOTAL_EARTH_KARBONITE/300)
+        FACTORIES_WANTED = 3 + int(gc.karbonite()/500)
 
         # refresh factory map
         FACTORY_MAP = []
@@ -443,6 +463,17 @@ while True:
                         gc.attack(unit.id,e.id)
         rangerBench.end()
 
+        healerBench.start()
+        for unit in healers:
+            # Ranger logic
+            if unit.location.is_on_map():
+                walkDownMap(unit, HEALER_MAP)
+                if gc.is_heal_ready(unit.id):
+                    for ally_id in HURT_ALLIES:
+                        if gc.can_heal(unit.id, ally_id):
+                            gc.heal(unit.id,ally_id)
+        healerBench.end()
+
         factoryBench.start()
         # Factory logic
         for unit in factories:
@@ -453,17 +484,21 @@ while True:
                     #print('unloaded a knight!')
                     gc.unload(unit.id, d)
                     continue
+            elif numWorkers == 0 and gc.can_produce_robot(unit.id, bc.UnitType.Worker):
+                gc.produce_robot(unit.id, bc.UnitType.Worker)
+                numWorkers += 1
+            #elif numRangers > (1+numHealers) * 8 and gc.can_produce_robot(unit.id,bc.UnitType.Healer):
+            #   gc.produce_robot(unit.id, bc.UnitType.Healer)
+            #   numHealers += 1
             elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
                 gc.produce_robot(unit.id, bc.UnitType.Ranger)
-                #print('produced a knight!')
+                numRangers += 1
                 continue
         factoryBench.end()
 
 
         workerBench.start()
         # Worker logic
-        numWorkers = len(workers)
-        numFactories = len(factories)
         for unit in workers:
             if unit.location.is_on_map():
                 d = randMoveDir(unit)

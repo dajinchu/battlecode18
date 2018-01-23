@@ -5,7 +5,6 @@ import array
 WIDTH = 50
 HEIGHT = 50
 
-
 # @param goals is a list of MapLocations denoting goal locations (to be set to 0)
 # @param walls is a Set denoting the places that can't be walked through
 def dijkstraMap(goals,walls):
@@ -18,75 +17,72 @@ def dijkstraMap(goals,walls):
         grid[g[0]][g[1]] = g[2]
         flen +=1
 
-    while flen:
+    while frontier:
         # pop the first
         curr = frontier.popleft()
-        flen -= 1
-        # set the value in the grid
-        grid[curr[0]][curr[1]]=curr[2]
+
+        x0 = curr[0]
+        y0 = curr[1]
+        vmin = curr[2]+1
+
         # check cardinal directions for locations with higher v
         # add the locations to frontier if they have higher
-        v = curr[2]
-        x = curr[0]+1
-        y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]-1
-        y = curr[1]
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]
-        y = curr[1]+1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]
-        y = curr[1]-1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]+1
-        y = curr[1]+1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]-1
-        y = curr[1]-1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]-1
-        y = curr[1]+1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
-        x = curr[0]+1
-        y = curr[1]-1
-        if 0<=x<WIDTH and 0<=y<HEIGHT and grid[x][y] > v+1 and not (x*WIDTH+y in walls):
-            grid[x][y]=v+1
-            frontier.append([x,y,v+1])
-            flen += 1
+        if x0 != 0:
+            x = x0-1
+            y = y0
+            if not (y*WIDTH+x in walls) and grid[x][y] > vmin:
+                grid[x][y]=vmin
+                frontier.append([x,y,vmin])
+            if y0 != 0:
+                y = y0 - 1
+                if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                    grid[x][y] = vmin
+                    frontier.append([x, y, vmin])
+            if y0 != HEIGHT-1:
+                y = y0 + 1
+                if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                    grid[x][y] = vmin
+                    frontier.append([x, y, vmin])
+        if x0 != WIDTH-1:
+            x = x0 + 1
+            y = y0
+            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                grid[x][y] = vmin
+                frontier.append([x, y, vmin])
+            if y0 != 0:
+                y = y0 - 1
+                if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                    grid[x][y] = vmin
+                    frontier.append([x, y, vmin])
+            if y0 != HEIGHT - 1:
+                y = y0 + 1
+                if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                    grid[x][y] = vmin
+                    frontier.append([x, y, vmin])
+        if y0 != HEIGHT - 1:
+            x = x0
+            y = y0+1
+            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                grid[x][y] = vmin
+                frontier.append([x, y, vmin])
+        if y0 != 0:
+            x = x0
+            y = y0-1
+            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
+                grid[x][y] = vmin
+                frontier.append([x, y, vmin])
     return grid
 
 
 total_time = 0
 goals = [[random.randrange(WIDTH),random.randrange(WIDTH),-random.randrange(5)] for i in range(100)]
 walls = {i for i in range(WIDTH*HEIGHT) if random.randint(0,0)==1}
-for i in range(500):
+for i in range(1000):
     start = time.time()
     A = dijkstraMap(goals,walls)
     end = time.time()
     total_time += end-start
-print(total_time/500)
+print(total_time/1000)
 
 '''A = dijkstraMap([[25,25,0],[25,30,-1]])
 
