@@ -52,6 +52,8 @@ MARSMAP = gc.starting_map(bc.Planet.Mars)
 THIS_PLANETMAP = gc.starting_map(gc.planet())
 HEIGHT = EARTHMAP.height
 WIDTH = EARTHMAP.width
+MARS_HEIGHT = MARSMAP.height;
+MARS_WIDTH = MARSMAP.width;
 
 # Instead of instantiating new MapLocations constantly, we make them ALL at the start and recycle them
 # I AM NOT SURE IF THIS ACTUALLY SAVES TIME, (doesn't appear to hurt though)
@@ -231,6 +233,12 @@ def senseAllEnemies(planet):
 def senseAllByType(planet,unitType):
     return gc.sense_nearby_units_by_type(MapLocation(planet,0,0),1000,unitType)
 
+def senseUnits(loc,radius2):
+    return gc.sense_nearby_units_by_team(loc, radius2, MY_TEAM)
+
+def senseAdjacentUnits(loc):
+    return senseUnits(loc, 2)
+
 # Build map towards enemy
 def mapToEnemy(planetMap):
     s = time.time()
@@ -300,6 +308,17 @@ def shouldILaunch(round):
     else: SHOULD_LAUNCH = True
     return SHOULD_LAUNCH
 
+def computeDestination(rocketId):
+    startX = MARS_WIDTH/2
+    startY = MARS_HEIGHT/2
+
+    loc = MapLocation(bc.planet.Mars, startX, startY);
+    while not can_launch_rocket(rocketId, loc)
+        startX += 1
+
+    return loc
+
+
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
@@ -321,11 +340,26 @@ while True:
 
         # Refresh enemy map
         ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
-        
+
+
         # walk through our units:
         for unit in gc.my_units():
 
-            # first, factory logic
+            # Rocket Logic
+            if unit.unit_type = bc.UnitType.Rocket:
+                if unit.structure_is_built():
+                    garrison = unit.structure_garrison();
+                    if shouldILaunch(round())
+                        adjacent = senseAdjacentUnits();
+                        for unit2 in adjacent :
+                            if gc.can_load(unit.id, unit2.id):
+                                gc.load(unit.id, robot.id):
+                        launch_rocket(unit.id, computeDestination())
+
+
+
+
+            # Factory logic
             if unit.unit_type == bc.UnitType.Factory:
                 garrison = unit.structure_garrison()
                 if len(garrison) > 0:
