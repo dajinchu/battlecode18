@@ -50,6 +50,7 @@ MOVE_DIRS.remove(bc.Direction.Center)
 EARTHMAP = gc.starting_map(bc.Planet.Earth)
 MARSMAP = gc.starting_map(bc.Planet.Mars)
 THIS_PLANETMAP = gc.starting_map(gc.planet())
+
 HEIGHT = THIS_PLANETMAP.height
 WIDTH = THIS_PLANETMAP.width
 MARS_WIDTH = MARSMAP.width
@@ -235,6 +236,12 @@ def senseAllEnemies(planet):
 def senseAllByType(planet,unitType):
     return gc.sense_nearby_units_by_type(MapLocation(planet,0,0),1000,unitType)
 
+def senseUnits(loc,radius2):
+    return gc.sense_nearby_units_by_team(loc, radius2, MY_TEAM)
+
+def senseAdjacentUnits(loc):
+    return senseUnits(loc, 2)
+
 # Build map towards enemy
 def mapToEnemy(planetMap):
     s = time.time()
@@ -304,6 +311,17 @@ def shouldILaunch(round):
     else: SHOULD_LAUNCH = True
     return SHOULD_LAUNCH
 
+def computeDestination(rocketId):
+    startX = MARS_WIDTH/2
+    startY = MARS_HEIGHT/2
+
+    loc = MapLocation(bc.planet.Mars, startX, startY)
+    while not gc.can_launch_rocket(rocketId, loc):
+        startX += 1
+
+    return loc
+
+
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
@@ -314,7 +332,7 @@ while True:
         # count our units
         numFactories = 0
         numWorkers = 0
-        numRockets = 0;
+        numRockets = 0
         for unit in gc.my_units():
             if unit.unit_type == bc.UnitType.Factory:
                 numFactories += 1
@@ -325,11 +343,26 @@ while True:
 
         # Refresh enemy map
         ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
-        
+
+
         # walk through our units:
         for unit in gc.my_units():
 
-            # first, factory logic
+            # Rocket Logic
+            if unit.unit_type == bc.UnitType.Rocket:
+                if unit.structure_is_built() and unit.location.is_on_map():
+                    garrison = unit.structure_garrison()
+                    if shouldILaunch(ROUND):
+                        adjacent = senseAdjacentUnits(unit.location.map_location())
+                        for unit2 in adjacent:
+                            if gc.can_load(unit.id, unit2.id):
+                                gc.load(unit.id, unit2.id)
+                        gc.launch_rocket(unit.id, computeDestination())
+
+
+
+
+            # Factory logic
             if unit.unit_type == bc.UnitType.Factory:
                 garrison = unit.structure_garrison()
                 if len(garrison) > 0:
