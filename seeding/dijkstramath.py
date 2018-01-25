@@ -45,7 +45,7 @@ def adjacencyGraph(walls):
             graph.append([])
         else:
             adj = adjacentInBounds(i)
-            adj.difference(walls)
+            adj.difference_update(walls)
             graph.append(adj)
     return graph
 
@@ -74,3 +74,7 @@ def dijkstraMap(goals, wallGraph):
                 grid[adj] = vmin
                 frontier.append([adj,vmin])
     return grid
+
+
+def logMap(map):
+    print(''.join([('{:3}\n' if idx % WIDTH == WIDTH - 1 else '{:3}').format(cell) for idx, cell in enumerate(map)]))

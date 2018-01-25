@@ -20,3 +20,9 @@ Find strategic/safe places to build factories and rockets
 Rangers need to not try shoot close
 
 Limit unit count?
+
+WHY DO WE CRASH LAND ON MARS
+
+FUZZY PATHFINDING AROUND DIJKSTRA
+
+Healer healing prioritization

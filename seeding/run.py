@@ -130,11 +130,11 @@ def senseAdjacentEnemies(loc):
 
 
 def senseAllEnemies(planet):
-    return senseEnemies(MapLocation(planet, 0, 0), 1000)
+    return senseEnemies(MapLocation(planet, 0, 0), 10000)
 
 
 def senseAllByType(planet, unitType):
-    return gc.sense_nearby_units_by_type(MapLocation(planet, 0, 0), 1000, unitType)
+    return gc.sense_nearby_units_by_type(MapLocation(planet, 0, 0), 10000, unitType)
 
 def senseAllies(loc,radius2):
     return gc.sense_nearby_units_by_team(loc, radius2, MY_TEAM)
@@ -271,7 +271,7 @@ def enemyAttackMap(planetMap):
     for e in senseAllEnemies(planetMap.planet):
         loc = e.location.map_location()
         if e.unit_type == bc.UnitType.Ranger or e.unit_type == bc.UnitType.Knight or e.unit_type == bc.UnitType.Mage:
-            eList.append([dmap.flattenXY(loc.x,loc.y),-int(math.sqrt(e.attack_range()))])
+            eList.append([dmap.flattenXY(loc.x,loc.y),-int(math.sqrt(e.attack_range()/2))])
     return dmap.dijkstraMap(eList,NO_WALL_GRAPH)
 
 # Produces a map for fleeing, using the map of enemy attack ranges
@@ -316,7 +316,7 @@ def rangerMap(planetMap, atkRange):
 
     goalLocs = []
 
-    realAtkRange = int(math.sqrt(atkRange))
+    realAtkRange = int(math.sqrt(atkRange/2))
     # now find where the distance is right for rangers
     for idx, value in enumerate(distMap):
         if value == realAtkRange:
@@ -335,12 +335,11 @@ KARBONITE_LOCS = []
 # count total karbonite and record their locations and amounts
 def initKarbonite():
     global TOTAL_KARBONITE
-    for x in range(WIDTH):
-        for y in range(HEIGHT):
-            k = EARTHMAP.initial_karbonite_at(MapLocation(bc.Planet.Earth, x, y))
-            if k >= 5:
-                KARBONITE_LOCS.append([dmap.flattenXY(x, y), int(-k / 4)])
-            TOTAL_KARBONITE += k
+    for i in range(WIDTH*HEIGHT):
+        k = THIS_PLANETMAP.initial_karbonite_at(MapLocationFlat(THIS_PLANETMAP.planet, i))
+        if k >= 5:
+            KARBONITE_LOCS.append([i, int(-k / 4)])
+        TOTAL_KARBONITE += k
 
 
 initKarbonite()
@@ -413,7 +412,7 @@ THIS_PLANET_WALLS = WATER if gc.planet() == bc.Planet.Earth else ROCKY
 WATER_GRAPH = dmap.adjacencyGraph(WATER)
 ROCKY_GRAPH = dmap.adjacencyGraph(ROCKY)
 WALL_GRAPH = WATER_GRAPH if gc.planet() == bc.Planet.Earth else ROCKY_GRAPH
-NO_WALL_GRAPH = WATER_GRAPH if gc.planet() == bc.Planet.Earth else ROCKY_GRAPH
+NO_WALL_GRAPH = dmap.adjacencyGraph([])
 
 # Dijkstra maps
 ENEMY_RANGE_MAP = []
@@ -487,7 +486,6 @@ while True:
             # Refresh enemy map
             ENEMY_RANGE_MAP = enemyAttackMap(THIS_PLANETMAP)
             FLEE_MAP = fleeMap(ENEMY_RANGE_MAP)
-            #print('\n'.join([''.join(['{:3}'.format(item) for item in row]) for row in ENEMY_RANGE_MAP]))
 
             enemyMapBench.start()
             #ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
@@ -532,6 +530,7 @@ while True:
         WORKERS_WANTED = 4 + int(TOTAL_KARBONITE/150)
         FACTORIES_WANTED = 3 + int(gc.karbonite()/300)
         ROCKETS_WANTED = 0 if ROUND < 500 else int((numRangers+numHealers)/(8+(700-ROUND)/50))
+        HEALERS_WANTED = int(numRangers/2)
 
 
         # collect hurt rangers for healers to heal
@@ -558,7 +557,7 @@ while True:
                             garSize+=1
                 # if we're still not full tell some dudes to come here
                 if garSize < unit.structure_max_capacity():
-                    nearby = senseAllies(unit.location.map_location(),5)
+                    nearby = senseAllies(unit.location.map_location(),25)
                     toldToCome = 0
                     for unit2 in nearby:
                         if unit2.unit_type == bc.UnitType.Ranger or unit2.unit_type == bc.UnitType.Healer:
@@ -684,7 +683,7 @@ while True:
             # don't produce units if we need the karbonite for rocket building
             if ROCKETS_WANTED > 0 and gc.karbonite() < ROCKET_COST:
                 continue
-            elif numRangers > (1+numHealers) * 4 and gc.can_produce_robot(unit.id,bc.UnitType.Healer):
+            elif numHealers < HEALERS_WANTED and gc.can_produce_robot(unit.id,bc.UnitType.Healer):
                 gc.produce_robot(unit.id, bc.UnitType.Healer)
                 numHealers += 1
             elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
