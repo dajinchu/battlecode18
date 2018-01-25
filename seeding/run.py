@@ -6,6 +6,8 @@ import collections as fast
 import time
 import math
 import fakerocketmath as rocketmath
+import dijkstramath as dmap
+
 
 print("pystarting")
 
@@ -58,6 +60,8 @@ MARS_HEIGHT = MARSMAP.height
 EARTH_WIDTH = EARTHMAP.width
 EARTH_HEIGHT = EARTHMAP.height
 
+dmap.setSize(WIDTH,HEIGHT)
+
 # Keeping track of enemy initial spawns and factory locations, deleting if we seem them no longer there
 ENEMY_LOCATION_MEMORY = {unit.location.map_location().y*WIDTH+unit.location.map_location().x
                          for unit in THIS_PLANETMAP.initial_units if unit.team != MY_TEAM}
@@ -76,6 +80,11 @@ def MapLocation(planetEnum, x, y):
     else:
         return MARS_MAPLOCATIONS[y * MARS_WIDTH + x]
 
+def MapLocationFlat(planetEnum, flatxy):
+    if planetEnum == bc.Planet.Earth:
+        return EARTH_MAPLOCATIONS[flatxy]
+    else:
+        return MARS_MAPLOCATIONS[flatxy]
 
 def getWalls(planetmap):
     impass = set()
@@ -84,12 +93,6 @@ def getWalls(planetmap):
             if not planetmap.is_passable_terrain_at(MapLocation(planetmap.planet, x, y)):
                 impass.add(y * planetmap.width + x)
     return impass
-
-
-WATER = getWalls(EARTHMAP)
-ROCKY = getWalls(MARSMAP)
-THIS_PLANET_WALLS = WATER if gc.planet() == bc.Planet.Earth else ROCKY
-
 
 def occupiableDirections(loc):
     ret = []
@@ -196,85 +199,46 @@ def tryMineKarbonite(unit):
                 return True
     return False
 
-
-# @param goals is a list of MapLocations denoting goal locations (to be set to 0)
-# @param walls is a Set denoting the places that can't be walked through
-def dijkstraMap(goals,walls):
-    # instantiate initial grid with "infinite" values
-    grid = [[100 for i in range(HEIGHT)] for k in range(WIDTH)]
-    frontier = fast.deque()
-    for g in goals:
-        frontier.append(g)
-        grid[g[0]][g[1]] = g[2]
-
-    while frontier:
-        # pop the first
-        curr = frontier.popleft()
-        x0 = curr[0]
-        y0 = curr[1]
-        vmin = curr[2]+1
-
-        # check cardinal directions for locations with higher v
-        # add the locations to frontier if they have higher
-        if x0 != 0:
-            x = x0-1
-            y = y0
-            if not (y*WIDTH+x in walls) and grid[x][y] > vmin:
-                grid[x][y]=vmin
-                frontier.append([x,y,vmin])
-        if x0 != WIDTH-1:
-            x = x0 + 1
-            y = y0
-            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
-                grid[x][y] = vmin
-                frontier.append([x, y, vmin])
-        if y0 != HEIGHT - 1:
-            x = x0
-            y = y0+1
-            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
-                grid[x][y] = vmin
-                frontier.append([x, y, vmin])
-        if y0 != 0:
-            x = x0
-            y = y0-1
-            if not (y * WIDTH + x in walls) and grid[x][y] > vmin:
-                grid[x][y] = vmin
-                frontier.append([x, y, vmin])
-    return grid
-
-
 # Move unit down a dijkstraMap
 def walkDownMap(unit, grid):
-    l = unit.location.map_location()
-    x = l.x
-    y = l.y
-    smallestLoc = [x, y]
-    smallest = grid[x][y]
-    adjacents = [[x + 1, y + 1], [x + 1, y], [x + 1, y - 1], [x, y - 1], [x - 1, y - 1], [x - 1, y], [x - 1, y + 1],
-                 [x, y + 1]]
-    for loc in adjacents:
-        if 0 <= loc[0] < WIDTH and 0 <= loc[1] < HEIGHT and grid[loc[0]][loc[1]] <= smallest and gc.is_occupiable(
-                MapLocation(l.planet, loc[0], loc[1])):
-            smallest = grid[loc[0]][loc[1]]
-            smallestLoc = loc
-    tryMove(unit, l.direction_to(MapLocation(l.planet, smallestLoc[0], smallestLoc[1])))
+    unit_maploc = unit.location.map_location()
+    loc = dmap.flattenMapLoc(unit_maploc)
+    smallestLocs = [loc]
+    smallest = grid[loc]
+    adjacents = dmap.adjacentInBounds(loc)
+    for adj in adjacents:
+        if grid[adj] <= smallest and gc.is_occupiable(MapLocationFlat(unit_maploc.planet, adj)):
+            if grid[adj] == smallest:
+                # if it is equally small just append this loc
+                smallestLocs.append(adj)
+            else:
+                # it set a new bar for smallest, set the smallest value and reset smallestLocs
+                smallest = grid[adj]
+                smallestLocs = [adj]
+    # of all the good choices, pick a random one
+    randloc = random.choice(smallestLocs)
+    tryMove(unit, unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc)))
 
 
 # Move unit up a dijkstraMap
 def walkUpMap(unit, grid):
-    l = unit.location.map_location()
-    x = l.x
-    y = l.y
-    biggestLoc = [x, y]
-    biggest = grid[x][y]
-    adjacents = [[x + 1, y + 1], [x + 1, y], [x + 1, y - 1], [x, y - 1], [x - 1, y - 1], [x - 1, y], [x - 1, y + 1],
-                 [x, y + 1]]
-    for loc in adjacents:
-        if 0 <= loc[0] < WIDTH and 0 <= loc[1] < HEIGHT and grid[loc[0]][loc[1]] >= biggest and gc.is_occupiable(
-                MapLocation(l.planet, loc[0], loc[1])):
-            biggest = grid[loc[0]][loc[1]]
-            biggestLoc = loc
-    tryMove(unit, l.direction_to(MapLocation(l.planet, biggestLoc[0], biggestLoc[1])))
+    unit_maploc = unit.location.map_location()
+    loc = dmap.flattenMapLoc(unit_maploc)
+    largestLocs = [loc]
+    largest = grid[loc]
+    adjacents = dmap.adjacentInBounds(loc)
+    for adj in adjacents:
+        if grid[adj] >= largest and gc.is_occupiable(MapLocationFlat(unit_maploc.planet, adj)):
+            if grid[adj] == largest:
+                # if it is equally small just append this loc
+                largestLocs.append(adj)
+            else:
+                # it set a new bar for largest, set the largest value and reset largestLocs
+                largest = grid[adj]
+                largestLocs = [adj]
+    # of all the good choices, pick a random one
+    randloc = random.choice(largestLocs)
+    tryMove(unit, unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc)))
 
 
 # Move unit towards goal value on dijkstraMap
@@ -296,9 +260,10 @@ def adjacentToMap(mapLocs):
     for loc in mapLocs:
         adjacent = gc.all_locations_within(loc, 2)
         for adjLoc in adjacent:
-            if not adjLoc.x * WIDTH + adjLoc.y in THIS_PLANET_WALLS:  # and not gc.is_occupiable(MapLocation(THIS_PLANETMAP.planet,adjLoc.x,adjLoc.y)):
-                goals.append([adjLoc.x, adjLoc.y, 0])
-    return dijkstraMap(goals, THIS_PLANET_WALLS)
+            flatxy = dmap.flattenXY(adjLoc.x, adjLoc.y)
+            if not flatxy in THIS_PLANET_WALLS:  # and not gc.is_occupiable(MapLocation(THIS_PLANETMAP.planet,adjLoc.x,adjLoc.y)):
+                goals.append([flatxy, 0])
+    return dmap.dijkstraMap(goals, WALL_GRAPH)
 
 # Produces an approximate dijkstra map of the enemy attack ranges.
 def enemyAttackMap(planetMap):
@@ -306,34 +271,29 @@ def enemyAttackMap(planetMap):
     for e in senseAllEnemies(planetMap.planet):
         loc = e.location.map_location()
         if e.unit_type == bc.UnitType.Ranger or e.unit_type == bc.UnitType.Knight or e.unit_type == bc.UnitType.Mage:
-            eList.append([loc.x,loc.y,-int(math.sqrt(e.attack_range()))])
-    return dijkstraMap(eList,[])
+            eList.append([dmap.flattenXY(loc.x,loc.y),-int(math.sqrt(e.attack_range()))])
+    return dmap.dijkstraMap(eList,NO_WALL_GRAPH)
 
 # Produces a map for fleeing, using the map of enemy attack ranges
 def fleeMap(enemyAttackMap):
     goalLocs = []
-    for x, col in enumerate(enemyAttackMap):
-        for y, cell in enumerate(col):
-            if cell < 0 and not (y*WIDTH+x in THIS_PLANET_WALLS):
-                goalLocs.append([x, y, cell])
-    return dijkstraMap(goalLocs,THIS_PLANET_WALLS)
+    for idx, cell in enumerate(enemyAttackMap):
+            if cell < 0 and not (idx in THIS_PLANET_WALLS):
+                goalLocs.append([idx, cell])
+    return dmap.dijkstraMap(goalLocs,WALL_GRAPH)
 
 # Build map towards enemy TODO UNUSED
 def mapToEnemy(planetMap):
     s = time.time()
     enemies = senseAllEnemies(planetMap.planet)
     enemyLocs = []
-    walls = set()
-    for f in senseAllByType(planetMap.planet, bc.UnitType.Factory):
-        walls.add(f.location.map_location().y * WIDTH + f.location.map_location().x)
-    walls.update(THIS_PLANET_WALLS)
     for e in enemies:
         loc = e.location.map_location()
-        enemyLocs.append([loc.x, loc.y, 0])
+        enemyLocs.append([dmap.flattenMapLoc(loc), 0])
     if not enemies:
-        enemyLocs = [[unit.location.map_location().x, unit.location.map_location().y, 0] for unit in
-                     THIS_PLANETMAP.initial_units if unit.team != MY_TEAM]
-    m = dijkstraMap(enemyLocs, walls)
+        for loc in ENEMY_LOCATION_MEMORY:
+            enemyLocs.append([loc,0])
+    m = dmap.dijkstraMap(enemyLocs, WALL_GRAPH)
     # print('\n'.join([''.join(['{:4}'.format(item) for item in row])for row in m]))
     # print("build enemy map took " + str(time.time()-s))
     return m
@@ -343,49 +303,44 @@ def mapToEnemy(planetMap):
 def rangerMap(planetMap, atkRange):
     enemies = senseAllEnemies(planetMap.planet)
     enemyLocs = []
-    walls = set()
-    for f in senseAllByType(planetMap.planet, bc.UnitType.Factory):
-        walls.add(f.location.map_location().x * WIDTH + f.location.map_location().y)
-    walls.update(THIS_PLANET_WALLS)
     if enemies:
         for e in enemies:
             loc = e.location.map_location()
-            enemyLocs.append([loc.x, loc.y, 0])
+            enemyLocs.append([dmap.flattenXY(loc.x, loc.y), 0])
     # If we can't see any enemies head towards where we last saw them. currently only remembers factory locations
     elif ENEMY_LOCATION_MEMORY:
         for loc in ENEMY_LOCATION_MEMORY:
-            enemyLocs.append([loc%WIDTH,int(loc/WIDTH),0])
+            enemyLocs.append([loc,0])
     # find distances to enemy, ignoring walls, because rangers can shoot over
-    distMap = dijkstraMap(enemyLocs, [])
+    distMap = dmap.dijkstraMap(enemyLocs, NO_WALL_GRAPH)
 
     goalLocs = []
 
     realAtkRange = int(math.sqrt(atkRange))
     # now find where the distance is right for rangers
-    for x, col in enumerate(distMap):
-        for y, cell in enumerate(col):
-            if cell == realAtkRange:
-                goalLocs.append([x, y, 0])
+    for idx, value in enumerate(distMap):
+        if value == realAtkRange:
+            goalLocs.append([idx, 0])
 
     # now pathfind to those sweet spot
-    rangerMap = dijkstraMap(goalLocs, walls)
+    rangerMap = dmap.dijkstraMap(goalLocs, WALL_GRAPH)
 
     return rangerMap
 
 
-TOTAL_EARTH_KARBONITE = 0
+TOTAL_KARBONITE = 0
 KARBONITE_LOCS = []
 
 # Iterate through all spots to find karbonite
 # count total karbonite and record their locations and amounts
 def initKarbonite():
-    global TOTAL_EARTH_KARBONITE
+    global TOTAL_KARBONITE
     for x in range(WIDTH):
         for y in range(HEIGHT):
             k = EARTHMAP.initial_karbonite_at(MapLocation(bc.Planet.Earth, x, y))
             if k >= 5:
-                KARBONITE_LOCS.append([x, y, int(-k / 4)])
-            TOTAL_EARTH_KARBONITE += k
+                KARBONITE_LOCS.append([dmap.flattenXY(x, y), int(-k / 4)])
+            TOTAL_KARBONITE += k
 
 
 initKarbonite()
@@ -393,20 +348,20 @@ initKarbonite()
 
 # Build a Dijkstra Map for earth's karbonite using vision and initial
 def updateKarbonite():
-    global TOTAL_EARTH_KARBONITE
+    global TOTAL_KARBONITE
     KARBONITE_LOCS[:] = [k for k in KARBONITE_LOCS if
-                         not gc.can_sense_location(MapLocation(bc.Planet.Earth, k[0], k[1]))
-                         or gc.karbonite_at(MapLocation(bc.Planet.Earth, k[0], k[1]))]
+                         not gc.can_sense_location(MapLocationFlat(THIS_PLANETMAP.planet,k[0]))
+                         or gc.karbonite_at(MapLocationFlat(THIS_PLANETMAP.planet,k[0]))]
     for k in KARBONITE_LOCS:
-        TOTAL_EARTH_KARBONITE += k[2]
-    return dijkstraMap(KARBONITE_LOCS, WATER)
+        TOTAL_KARBONITE += k[1]
+    return dmap.dijkstraMap(KARBONITE_LOCS, WATER_GRAPH)
 
 def updateEnemyMemory():
     global ENEMY_LOCATION_MEMORY
     deleteLocs = set()
     # delete if we see it is now empty
     for loc in ENEMY_LOCATION_MEMORY:
-        maploc = MapLocation(THIS_PLANETMAP.planet,loc%WIDTH,int(loc/WIDTH))
+        maploc = MapLocationFlat(THIS_PLANETMAP.planet,loc)
         if gc.can_sense_location(maploc):
             if not gc.has_unit_at_location(maploc) or gc.sense_unit_at_location(maploc).team == MY_TEAM:
                 deleteLocs.add(loc)
@@ -450,6 +405,15 @@ healerBench = Benchmark("Handling healers")
 factoryBench = Benchmark("Handling factories")
 workerBench = Benchmark("Handling workers")
 
+
+# Wall preprocessing
+WATER = getWalls(EARTHMAP)
+ROCKY = getWalls(MARSMAP)
+THIS_PLANET_WALLS = WATER if gc.planet() == bc.Planet.Earth else ROCKY
+WATER_GRAPH = dmap.adjacencyGraph(WATER)
+ROCKY_GRAPH = dmap.adjacencyGraph(ROCKY)
+WALL_GRAPH = WATER_GRAPH if gc.planet() == bc.Planet.Earth else ROCKY_GRAPH
+NO_WALL_GRAPH = WATER_GRAPH if gc.planet() == bc.Planet.Earth else ROCKY_GRAPH
 
 # Dijkstra maps
 ENEMY_RANGE_MAP = []
@@ -542,8 +506,8 @@ while True:
                 for ally in rangers:
                     if ally.health < ally.max_health and ally.location.is_on_map():
                         loc = ally.location.map_location()
-                        goals.append([loc.x, loc.y, int((ally.health - ally.max_health)/10)])
-                HEALER_MAP = dijkstraMap(goals, THIS_PLANET_WALLS)
+                        goals.append([dmap.flattenXY(loc.x,loc.y), int((ally.health - ally.max_health)/10)])
+                HEALER_MAP = dmap.dijkstraMap(goals, WALL_GRAPH)
                 healerMapBench.end()
 
             # refresh blueprint map
@@ -565,7 +529,7 @@ while True:
             EARTH_KARBONITE_MAP = updateKarbonite()
 
         # refresh units_wanted TODO MAGIC NUMBERS
-        WORKERS_WANTED = 4 + int(TOTAL_EARTH_KARBONITE/150)
+        WORKERS_WANTED = 4 + int(TOTAL_KARBONITE/150)
         FACTORIES_WANTED = 3 + int(gc.karbonite()/300)
         ROCKETS_WANTED = 0 if ROUND < 500 else int((numRangers+numHealers)/(8+(700-ROUND)/50))
 
@@ -637,7 +601,7 @@ while True:
                             gc.attack(unit.id, target.id)
                 if unit.id in ID_GO_TO_ROCKET:
                     walkDownMap(unit,ROCKET_MAP)
-                elif unit.health < 170 and ENEMY_RANGE_MAP[unit.location.map_location().x][unit.location.map_location().y] < 3:
+                elif unit.health < 170 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 else:
                     walkDownMap(unit, RANGER_MAP)
@@ -654,7 +618,7 @@ while True:
                             break
                 if unit.id in ID_GO_TO_ROCKET:
                     walkDownMap(unit,ROCKET_MAP)
-                elif ENEMY_RANGE_MAP[unit.location.map_location().x][unit.location.map_location().y] < 5:
+                elif ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 5:
                     walkUpMap(unit, FLEE_MAP)
                 else:
                     walkDownMap(unit, HEALER_MAP)
@@ -674,11 +638,11 @@ while True:
                     # if we worked on factory, move on to next unit
                     # print("worked on factory")
                     continue
-                elif BLUEPRINT_MAP and BLUEPRINT_MAP[unit.location.map_location().x][unit.location.map_location().y] < 4:
+                elif BLUEPRINT_MAP and BLUEPRINT_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 4:
                     walkDownMap(unit, BLUEPRINT_MAP)
                     continue
                 # Run away!
-                elif ENEMY_RANGE_MAP[unit.location.map_location().x][unit.location.map_location().y] < 3:
+                elif ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 # 0. Place blueprints if needed
                 elif numFactories < FACTORIES_WANTED and tryBlueprint(unit, bc.UnitType.Factory):
@@ -695,7 +659,7 @@ while True:
                     # print('blueprinted')
                     numRockets += 1
                     continue
-                elif EARTH_KARBONITE_MAP[unit.location.map_location().x][unit.location.map_location().y] < 5:
+                elif EARTH_KARBONITE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 5:
                     # print("walked down")
                     walkDownMap(unit, EARTH_KARBONITE_MAP)
                 # 5. Wander
