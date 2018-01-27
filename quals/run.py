@@ -30,14 +30,17 @@ if(gc.planet() == bc.Planet.Earth):
     gc.queue_research(bc.UnitType.Healer)
     gc.queue_research(bc.UnitType.Healer)
     gc.queue_research(bc.UnitType.Ranger)
+    gc.queue_research(bc.UnitType.Ranger)
+    gc.queue_research(bc.UnitType.Rocket)
+    gc.queue_research(bc.UnitType.Rocket)
     gc.queue_research(bc.UnitType.Rocket)
 
 # disable timing logs for production code
 TIMING_DISABLED = False
 
 # SPEC CONSTANTS
-REPLICATE_COST = 30
-ROCKET_COST = 75
+REPLICATE_COST = 60
+ROCKET_COST = 150
 
 # CODING CONSTANTS
 MY_TEAM = gc.team()
@@ -49,8 +52,7 @@ MOVE_DIRS = list(bc.Direction)
 MOVE_DIRS.remove(bc.Direction.Center)
 
 # Order to attack units. First in list is higher priority
-RANGER_PRIORITY = [bc.UnitType.Factory,bc.UnitType.Rocket,bc.UnitType.Mage,bc.UnitType.Healer,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Worker]
-HEALER_PRIORITY = [bc.UnitType.Mage,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Worker,bc.UnitType.Healer]
+RANGER_PRIORITY = [bc.UnitType.Mage,bc.UnitType.Healer,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Worker,bc.UnitType.Factory,bc.UnitType.Rocket]
 OVERCHARGE_PRIORITY = [bc.UnitType.Mage,bc.UnitType.Ranger,bc.UnitType.Knight]
 
 EARTHMAP = gc.starting_map(bc.Planet.Earth)
@@ -540,27 +542,32 @@ while True:
         if ROUND % 10 == 1:
             EARTH_KARBONITE_MAP = updateKarbonite()
 
+        # ===================================================
+        # Strategical decisions
         # refresh units_wanted TODO MAGIC NUMBERS
         WORKERS_WANTED = 4 + int(TOTAL_KARBONITE/150)
         FACTORIES_WANTED = 3 + int(gc.karbonite()/300)
         ROCKETS_WANTED = 0 if ROUND < 500 else int((numRangers+numHealers)/(8+(700-ROUND)/50))
         HEALERS_WANTED = int(numRangers/2)
 
-        FLEE_TO_MARS = False
-        if ROUND > 720 and gc.planet() == bc.Planet.Earth:
-            FLEE_TO_MARS = True
+        # Have everyone ditch combat and flee to the rockets after round 700
+        FLEE_TO_MARS = numRockets > 0 and ROUND > 700 and gc.planet() == bc.Planet.Earth
+        # pause combat unit production if we need rockets and either can't afford rockets or have no workers
+        # (and need to produce workers from factories)
+        PAUSE_COMBAT_PRODUCTION = ROCKETS_WANTED > 0 and (numWorkers == 0 or gc.karbonite() < ROCKET_COST)
+        # ===================================================
 
         # collect hurt rangers for healers to heal
         hurtBench.start()
         HURT_ALLIES = []
         if healers:
-            for seq in [rangers,mages,knights,workers,healers]:
-                for ally in seq:
+            for seq in [mages,rangers,knights,workers,healers]: # THIS LIST HERE IS THE PRIORITY OF UNITS HEALERS TARGET
+                for unitType,ally in enumerate(seq):
                     if ally.location.is_on_map():
                         if ally.health < ally.max_health:
-                            HURT_ALLIES.append([ally.max_health-ally.health,ally.id])
-            HURT_ALLIES.sort(key=lambda x : x[0])
-            HURT_ALLIES = [x[1] for x in HURT_ALLIES]
+                            HURT_ALLIES.append((unitType,ally.max_health-ally.health,ally.id))
+            HURT_ALLIES.sort(key=lambda x : x)
+            HURT_ALLIES = [x[2] for x in HURT_ALLIES]
         hurtBench.end()
 
         # rockets need to processed first so they can load units
@@ -659,7 +666,7 @@ while True:
                     gc.replicate(unit.id, d)
                     numWorkers += 1
                 # 2. look for and work on blueprints
-                elif tryBuildStructure(unit):
+                if tryBuildStructure(unit):
                     # if we worked on factory, move on to next unit
                     # print("worked on factory")
                     continue
@@ -684,7 +691,7 @@ while True:
                     # print('blueprinted')
                     numRockets += 1
                     continue
-                elif EARTH_KARBONITE_MAP[flatloc] < 5:
+                elif EARTH_KARBONITE_MAP[flatloc]<30:
                     # print("walked down")
                     walkDownMap(unit, EARTH_KARBONITE_MAP)
                 # 5. Wander
@@ -707,7 +714,7 @@ while True:
                 gc.produce_robot(unit.id, bc.UnitType.Worker)
                 numWorkers += 1
             # don't produce units if we need the karbonite for rocket building
-            if ROCKETS_WANTED > 0 and gc.karbonite() < ROCKET_COST:
+            if PAUSE_COMBAT_PRODUCTION:
                 continue
             elif numHealers < HEALERS_WANTED and gc.can_produce_robot(unit.id,bc.UnitType.Healer):
                 gc.produce_robot(unit.id, bc.UnitType.Healer)
