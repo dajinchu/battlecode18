@@ -2,7 +2,7 @@ import battlecode as bc
 import random
 import sys
 import traceback
-import collections as fast
+from enum import Enum
 import time
 import math
 import fakerocketmath as rocketmath
@@ -22,19 +22,6 @@ print("pystarted")
 # aside from turns taking slightly different amounts of time due to noise.
 random.seed(6137)
 
-# let's start off with some research!
-# we can queue as much as we want.
-# gc.queue_research(bc.UnitType.Rocket)
-if(gc.planet() == bc.Planet.Earth):
-    gc.queue_research(bc.UnitType.Healer)
-    gc.queue_research(bc.UnitType.Healer)
-    gc.queue_research(bc.UnitType.Healer)
-    gc.queue_research(bc.UnitType.Ranger)
-    gc.queue_research(bc.UnitType.Ranger)
-    gc.queue_research(bc.UnitType.Rocket)
-    gc.queue_research(bc.UnitType.Rocket)
-    gc.queue_research(bc.UnitType.Rocket)
-
 # disable timing logs for production code
 TIMING_DISABLED = False
 
@@ -53,7 +40,10 @@ MOVE_DIRS.remove(bc.Direction.Center)
 
 # Order to attack units. First in list is higher priority
 RANGER_PRIORITY = [bc.UnitType.Mage,bc.UnitType.Healer,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Worker,bc.UnitType.Factory,bc.UnitType.Rocket]
+KNIGHT_PRIORITY = [bc.UnitType.Factory,bc.UnitType.Mage,bc.UnitType.Healer,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Worker,bc.UnitType.Rocket]
 OVERCHARGE_PRIORITY = [bc.UnitType.Mage,bc.UnitType.Ranger,bc.UnitType.Knight]
+
+COMBAT_UNITTYPE = {bc.UnitType.Mage,bc.UnitType.Ranger,bc.UnitType.Knight,bc.UnitType.Healer}
 
 EARTHMAP = gc.starting_map(bc.Planet.Earth)
 MARSMAP = gc.starting_map(bc.Planet.Mars)
@@ -165,20 +155,13 @@ def tryBlueprint(unit, blueprintType):
 
 # For Worker, try to build on nearby blueprints.
 # return true if we built and build is still in progress
-def tryBuildStructure(unit):
+def tryBuildStructure(unit, blueprints):
     # First try to build directly adjacent factories
-    adjfactories = gc.sense_nearby_units_by_type(unit.location.map_location(), 2, bc.UnitType.Factory)
-    adjrockets = gc.sense_nearby_units_by_type(unit.location.map_location(), 2, bc.UnitType.Rocket)
     structureToBuild = None
     highestHealth = -1
-    for s in adjfactories:
+    for s in blueprints:
         # Build the factory if it isn't already finished
-        if not s.structure_is_built() and s.health > highestHealth:
-            structureToBuild = s
-            highestHealth = s.health
-    for s in adjrockets:
-        # Build the factory if it isn't already finished
-        if not s.structure_is_built() and s.health > highestHealth:
+        if s.health > highestHealth and unit.location.is_adjacent_to(s.location):
             structureToBuild = s
             highestHealth = s.health
     if structureToBuild and gc.can_build(unit.id, structureToBuild.id):
@@ -200,12 +183,11 @@ def tryMineKarbonite(unit):
         dirTo = unit.location.map_location().direction_to(karbs[0])
         if gc.can_harvest(unit.id, dirTo):
             gc.harvest(unit.id, dirTo)
-            if len(karbs) > 1 or gc.karbonite_at(karbs[0]) > 0:
-                return True
+            return True
     return False
 
-# Move unit down a dijkstraMap
-def walkDownMap(unit, grid):
+# Finds a direction bringing you down the map
+def downMapDir(unit,grid):
     unit_maploc = unit.location.map_location()
     loc = dmap.flattenMapLoc(unit_maploc)
     smallestLocs = [loc]
@@ -222,8 +204,11 @@ def walkDownMap(unit, grid):
                 smallestLocs = [adj]
     # of all the good choices, pick a random one
     randloc = random.choice(smallestLocs)
-    tryMove(unit, unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc)))
+    return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc))
 
+# Move unit down a dijkstraMap
+def walkDownMap(unit, grid):
+    tryMove(unit, downMapDir(unit,grid))
 
 # Move unit up a dijkstraMap
 def walkUpMap(unit, grid):
@@ -266,7 +251,7 @@ def adjacentToMap(mapLocs):
         adjacent = gc.all_locations_within(loc, 2)
         for adjLoc in adjacent:
             flatxy = dmap.flattenXY(adjLoc.x, adjLoc.y)
-            if not flatxy in THIS_PLANET_WALLS:  # and not gc.is_occupiable(MapLocation(THIS_PLANETMAP.planet,adjLoc.x,adjLoc.y)):
+            if not flatxy in THIS_PLANET_WALLS and gc.is_occupiable(adjLoc):
                 goals.append([flatxy, 0])
     return dmap.dijkstraMap(goals, WALL_GRAPH)
 
@@ -343,7 +328,7 @@ def initKarbonite():
     for i in range(WIDTH*HEIGHT):
         k = THIS_PLANETMAP.initial_karbonite_at(MapLocationFlat(THIS_PLANETMAP.planet, i))
         if k >= 5:
-            KARBONITE_LOCS.append([i, int(-k / 4)])
+            KARBONITE_LOCS.append((i,0))
         TOTAL_KARBONITE += k
 
 
@@ -353,11 +338,14 @@ initKarbonite()
 # Build a Dijkstra Map for earth's karbonite using vision and initial
 def updateKarbonite():
     global TOTAL_KARBONITE
+    global KARBONITE_LOCS
+
     KARBONITE_LOCS[:] = [k for k in KARBONITE_LOCS if
                          not gc.can_sense_location(MapLocationFlat(THIS_PLANETMAP.planet,k[0]))
                          or gc.karbonite_at(MapLocationFlat(THIS_PLANETMAP.planet,k[0]))]
-    for k in KARBONITE_LOCS:
-        TOTAL_KARBONITE += k[1]
+    #TOTAL_KARBONITE = 0
+    #for k in KARBONITE_LOCS:
+    #    TOTAL_KARBONITE += k[1]
     return dmap.dijkstraMap(KARBONITE_LOCS, WATER_GRAPH)
 
 def updateEnemyMemory():
@@ -374,6 +362,42 @@ def updateEnemyMemory():
         if e.team != MY_TEAM:
             loc = e.location.map_location()
             ENEMY_LOCATION_MEMORY.add(loc.y*WIDTH + loc.x)
+
+def manageResearch():
+    research = gc.research_info()
+    if (gc.planet() == bc.Planet.Earth and not research.has_next_in_queue()):
+        if(STRAT == Strategy.KNIGHT_RUSH):
+                gc.queue_research(bc.UnitType.Knight)
+        gc.queue_research(bc.UnitType.Healer)
+        gc.queue_research(bc.UnitType.Healer)
+        gc.queue_research(bc.UnitType.Healer)
+        gc.queue_research(bc.UnitType.Rocket)
+        gc.queue_research(bc.UnitType.Mage)
+        gc.queue_research(bc.UnitType.Mage)
+        gc.queue_research(bc.UnitType.Mage)
+        gc.queue_research(bc.UnitType.Mage)
+
+def priorityAttack(unit, priorityList):
+    if gc.is_attack_ready(unit.id):
+        enemies = senseEnemies(unit.location.map_location(), unit.attack_range())
+        if enemies:
+            target = enemies[0]
+            targetPriority = priorityList.index(enemies[0].unit_type)
+            for e in enemies:
+                priorityLevel = priorityList.index(e.unit_type)
+                if priorityLevel < targetPriority:
+                    target = e
+                    targetPriority = priorityLevel
+                elif priorityLevel == targetPriority and e.health < target.health:
+                    target = e
+            if gc.can_attack(unit.id, target.id):
+                gc.attack(unit.id, target.id)
+
+def knightAttack(unit):
+    priorityAttack(unit,KNIGHT_PRIORITY)
+
+def rangerAttack(unit):
+    priorityAttack(unit,RANGER_PRIORITY)
 
 class Benchmark:
     canStart = True
@@ -425,6 +449,7 @@ NO_WALL_GRAPH = dmap.adjacencyGraph([])
 
 # Dijkstra maps
 ENEMY_RANGE_MAP = []
+ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
 FLEE_MAP = []
 RANGER_MAP = []
 HEALER_MAP = []
@@ -432,6 +457,29 @@ BLUEPRINT_MAP = []
 EARTH_KARBONITE_MAP = []
 ROCKET_MAP = []
 ID_GO_TO_ROCKET = set()
+
+
+#global var eh
+WORKERS_WANTED = 0
+FACTORIES_WANTED = 0
+
+class Strategy(Enum):
+    KNIGHT_RUSH = 1
+    RANGER_HEALER = 2
+    MAGES = 3
+
+# ranger healer by default
+STRAT = Strategy.RANGER_HEALER
+
+# DECIDE WHETHER OR NOT TO KNIGHT_RUSH
+if(gc.planet() == bc.Planet.Earth):
+    for unit in EARTHMAP.initial_units:
+        if unit.team == MY_TEAM and ENEMY_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 15:
+            STRAT = Strategy.KNIGHT_RUSH
+            break
+
+# Research according to the strat
+manageResearch()
 
 while True:
     ROUND = gc.round()
@@ -480,6 +528,8 @@ while True:
         numFactories = len(factories) + len(factoryBlueprints)
         numRockets = len(rockets) + len(rocketBlueprints)
         numRangers = len(rangers)
+        numKnights = len(knights)
+        numMages = len(mages)
         numHealers = len(healers)
         allBlueprints = factoryBlueprints + rocketBlueprints
         countUnitsBench.end()
@@ -504,6 +554,8 @@ while True:
             FLEE_MAP = fleeMap(ENEMY_RANGE_MAP)
             enemyMapBench.end()
 
+            ENEMY_MAP = mapToEnemy(THIS_PLANETMAP)
+
             RANGER_MAP = []
             if rangers:
                 rangerMapBench.start()
@@ -515,10 +567,11 @@ while True:
             if healers:
                 healerMapBench.start()
                 goals = []
-                for ally in rangers:
-                    if ally.health < ally.max_health and ally.location.is_on_map():
-                        loc = ally.location.map_location()
-                        goals.append([dmap.flattenXY(loc.x,loc.y), int((ally.health - ally.max_health)/10)])
+                for seq in [mages, rangers, knights, workers, healers]:
+                    for ally in seq:
+                        if ally.health < ally.max_health and ally.location.is_on_map():
+                            loc = ally.location.map_location()
+                            goals.append([dmap.flattenXY(loc.x,loc.y), int((ally.health - ally.max_health)/10)])
                 HEALER_MAP = dmap.dijkstraMap(goals, WALL_GRAPH)
                 healerMapBench.end()
 
@@ -539,16 +592,38 @@ while True:
             rocketMapBench.end()
 
         # refresh karbonite map
-        if ROUND % 10 == 1:
+        if gc.get_time_left_ms() > 8000 or ROUND % 8 == 1:
+            karboniteMapBench.start()
             EARTH_KARBONITE_MAP = updateKarbonite()
+            karboniteMapBench.end()
 
         # ===================================================
         # Strategical decisions
         # refresh units_wanted TODO MAGIC NUMBERS
-        WORKERS_WANTED = 4 + int(TOTAL_KARBONITE/150)
-        FACTORIES_WANTED = 3 + int(gc.karbonite()/300)
+
+        # Knight Rush should not last past round 150
+        if STRAT == Strategy.KNIGHT_RUSH and ROUND > 150:
+            STRAT = Strategy.RANGER_HEALER
+
+        maxworkers = 4 + int(TOTAL_KARBONITE/500)
+        if ROUND == 1:
+            WORKERS_WANTED = 4 + int(TOTAL_KARBONITE/2000)
+        elif WORKERS_WANTED == numWorkers and gc.karbonite() > 80:
+            # Increment only if we already hit the number we want, and we leave some karb buffer for the combat units
+            if FACTORIES_WANTED == numFactories:
+                # if we've got enough factories, we can feel free to just get more workers, up until maxworkers
+                WORKERS_WANTED = min(WORKERS_WANTED + 1, maxworkers)
+
+        print('workers wanted',WORKERS_WANTED," max workers",maxworkers," karbonite",TOTAL_KARBONITE)
+        if ROUND == 1:
+            FACTORIES_WANTED = 3+math.ceil(TOTAL_KARBONITE/2000)
+        elif FACTORIES_WANTED == numFactories and gc.karbonite()>300:
+            FACTORIES_WANTED += 1
         ROCKETS_WANTED = 0 if ROUND < 500 else int((numRangers+numHealers)/(8+(700-ROUND)/50))
-        HEALERS_WANTED = int(numRangers/2)
+        HEALERS_WANTED = int((numRangers+numKnights+numMages)/2)
+        KNIGHTS_WANTED = 100 if STRAT == Strategy.KNIGHT_RUSH else 0
+        RANGERS_WANTED = 150 if STRAT == Strategy.RANGER_HEALER else 0
+        MAGES_WANTED = 150 if STRAT == Strategy.MAGES else 0
 
         # Have everyone ditch combat and flee to the rockets after round 700
         FLEE_TO_MARS = numRockets > 0 and ROUND > 700 and gc.planet() == bc.Planet.Earth
@@ -561,12 +636,12 @@ while True:
         hurtBench.start()
         HURT_ALLIES = []
         if healers:
-            for seq in [mages,rangers,knights,workers,healers]: # THIS LIST HERE IS THE PRIORITY OF UNITS HEALERS TARGET
-                for unitType,ally in enumerate(seq):
+            for seq in [mages, rangers, knights, workers, healers]:
+                for unitType, ally in enumerate(seq):
                     if ally.location.is_on_map():
                         if ally.health < ally.max_health:
-                            HURT_ALLIES.append((unitType,ally.max_health-ally.health,ally.id))
-            HURT_ALLIES.sort(key=lambda x : x)
+                            HURT_ALLIES.append((unitType, ally.max_health - ally.health, ally.id))
+            HURT_ALLIES.sort(key=lambda x: x)
             HURT_ALLIES = [x[2] for x in HURT_ALLIES]
         hurtBench.end()
 
@@ -590,7 +665,7 @@ while True:
                     nearby = senseAllies(unit.location.map_location(),25)
                     toldToCome = 0
                     for unit2 in nearby:
-                        if unit2.unit_type == bc.UnitType.Ranger or unit2.unit_type == bc.UnitType.Healer:
+                        if unit2.unit_type in COMBAT_UNITTYPE:
                             ID_GO_TO_ROCKET.add(unit2.id)
                             toldToCome += 1
                         if toldToCome >= unit.structure_max_capacity() - garSize:
@@ -615,27 +690,28 @@ while True:
         for unit in rangers:
             # Ranger logic
             if unit.location.is_on_map():
-                if gc.is_attack_ready(unit.id):
-                    enemies = senseEnemies(unit.location.map_location(), unit.attack_range())
-                    if enemies:
-                        target = enemies[0]
-                        targetPriority = RANGER_PRIORITY.index(enemies[0].unit_type)
-                        for e in enemies:
-                            priorityLevel = RANGER_PRIORITY.index(e.unit_type)
-                            if priorityLevel < targetPriority:
-                                target = e
-                                targetPriority = priorityLevel
-                            elif priorityLevel == targetPriority and e.health < target.health:
-                                target = e
-                        if gc.can_attack(unit.id, target.id):
-                            gc.attack(unit.id, target.id)
+                rangerAttack(unit)
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
                 elif unit.health < 170 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 else:
                     walkDownMap(unit, RANGER_MAP)
+                rangerAttack(unit)
         rangerBench.end()
+
+        for unit in knights:
+            if unit.location.is_on_map():
+                loc = unit.location.map_location()
+                knightAttack(unit)
+                # Move towards enemies
+                if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
+                    walkDownMap(unit,ROCKET_MAP)
+                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
+                    walkUpMap(unit,FLEE_MAP)
+                else:
+                    walkDownMap(unit, ENEMY_MAP)
+                knightAttack(unit)
 
         healerBench.start()
         for unit in healers:
@@ -646,9 +722,10 @@ while True:
                         if gc.can_heal(unit.id, ally_id):
                             gc.heal(unit.id, ally_id)
                             break
+                loc = dmap.flattenMapLoc(unit.location.map_location())
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
-                elif ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 5:
+                elif HEALER_MAP[loc] == 100 or ENEMY_RANGE_MAP[loc] < 5:
                     walkUpMap(unit, FLEE_MAP)
                 else:
                     walkDownMap(unit, HEALER_MAP)
@@ -660,89 +737,78 @@ while True:
             if unit.location.is_on_map():
                 mloc = unit.location.map_location()
                 flatloc = dmap.flattenMapLoc(mloc)
-                d = randMoveDir(unit) #TODO let workers act and move in the same turn
-                # 1. Replicate if needed
-                if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id, d):
-                    gc.replicate(unit.id, d)
-                    numWorkers += 1
-                # 2. look for and work on blueprints
-                if tryBuildStructure(unit):
-                    # if we worked on factory, move on to next unit
-                    # print("worked on factory")
-                    continue
-                elif BLUEPRINT_MAP and BLUEPRINT_MAP[flatloc] < 4:
+
+                # MOVEMENT ====================================
+                # Move towards blueprints to  build
+                if BLUEPRINT_MAP and BLUEPRINT_MAP[flatloc] < 4:
                     walkDownMap(unit, BLUEPRINT_MAP)
-                    continue
                 # Run away!
                 elif ENEMY_RANGE_MAP[flatloc] < 3:
                     walkUpMap(unit,FLEE_MAP)
-                # 0. Place blueprints if needed
+                # Walk towards karbonite
+                elif EARTH_KARBONITE_MAP[flatloc]<40:
+                    # print("walked down")
+                    walkDownMap(unit, EARTH_KARBONITE_MAP)
+                # stay safe if nothing to do
+                else:
+                    walkUpMap(unit,FLEE_MAP)
+
+                # WORKER ACTIONS ==============================
+                # look for and work on blueprints
+                if tryBuildStructure(unit, allBlueprints):
+                    nothing =  1
+                    # do nothing
+                # Place blueprints if needed
                 elif numFactories < FACTORIES_WANTED and tryBlueprint(unit, bc.UnitType.Factory):
-                    # print('blueprinted')
                     numFactories += 1
-                    continue
-                # 3. Look for and mine Karbonite
+                # Look for and mine Karbonite
                 elif tryMineKarbonite(unit):
-                    # print("mined")
-                    # we mined and there's still more, stay in place and move on
-                    continue
-                # 4. Walk towards karbonite
+                    nothing =  1
                 elif numRockets < ROCKETS_WANTED and tryBlueprint(unit, bc.UnitType.Rocket):
                     # print('blueprinted')
                     numRockets += 1
-                    continue
-                elif EARTH_KARBONITE_MAP[flatloc]<30:
-                    # print("walked down")
-                    walkDownMap(unit, EARTH_KARBONITE_MAP)
-                # 5. Wander
-                else:
-                    # print("wandered")
-                    tryMove(unit, d)
+
+                # REPLICATION ==================================
+                # 1. Replicate if needed
+                replicateDir = randMoveDir(unit) # Replicate towards the enemy
+                if numWorkers < WORKERS_WANTED and gc.karbonite() > REPLICATE_COST and gc.can_replicate(unit.id, replicateDir):
+                    gc.replicate(unit.id, replicateDir)
+                    numWorkers += 1
         workerBench.end()
 
         factoryBench.start()
         # Factory logic
         for unit in factories:
             garrison = unit.structure_garrison()
-            if len(garrison) > 0:
+            for unit2 in garrison:
                 d = randMoveDir(unit)
                 if gc.can_unload(unit.id, d):
                     # print('unloaded a knight!')
                     gc.unload(unit.id, d)
+            if numWorkers < WORKERS_WANTED:
+                # Build worker if possible, if can't afford, do nothing (continue)
+                if gc.can_produce_robot(unit.id, bc.UnitType.Worker):
+                    gc.produce_robot(unit.id, bc.UnitType.Worker)
+                    numWorkers += 1
+                else:
                     continue
-            if numWorkers < WORKERS_WANTED and gc.can_produce_robot(unit.id, bc.UnitType.Worker):
-                gc.produce_robot(unit.id, bc.UnitType.Worker)
-                numWorkers += 1
             # don't produce units if we need the karbonite for rocket building
             if PAUSE_COMBAT_PRODUCTION:
                 continue
             elif numHealers < HEALERS_WANTED and gc.can_produce_robot(unit.id,bc.UnitType.Healer):
                 gc.produce_robot(unit.id, bc.UnitType.Healer)
                 numHealers += 1
-            elif gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
+            elif numKnights< KNIGHTS_WANTED and gc.can_produce_robot(unit.id, bc.UnitType.Knight):
+                gc.produce_robot(unit.id, bc.UnitType.Knight)
+                numKnights += 1
+            elif numRangers< RANGERS_WANTED and gc.can_produce_robot(unit.id, bc.UnitType.Ranger):
                 gc.produce_robot(unit.id, bc.UnitType.Ranger)
                 numRangers += 1
-                continue
+            elif numMages < MAGES_WANTED and gc.can_produce_robot(unit.id, bc.UnitType.Mage):
+                gc.produce_robot(unit.id, bc.UnitType.Mage)
+                numMages += 1
         factoryBench.end()
 
-        '''
-        for unit in knights:
-            if unit.location.is_on_map():
-                # Attack in range enemies
-                adjacent = senseAdjacentEnemies(unit.location.map_location())
-                for other in adjacent:
-                    if gc.is_attack_ready(unit.id) and gc.can_attack(unit.id, other.id):
-                        # print('attacked a thing!')
-                        gc.attack(unit.id, other.id)
-                        break
-                # Move towards enemies
-                walkDownMap(unit, ENEMY_MAP)
-                nearby = gc.sense_nearby_units_by_team(unit.location.map_location(), 50, ENEMY_TEAM)
-                for other in nearby:
-                    tryMove(unit,unit.location.map_location().direction_to(other.location.map_location()))
-                wander(unit.id)
-                
-        '''
             # okay, there weren't any dudes around
             # wander(unit.id)
     except Exception as e:
