@@ -197,8 +197,9 @@ def tryMineKarbonite(unit):
 def traverseMap(loc,grid,numGo):
     currLoc = loc
     for n in numGo:
-       if numGo > 0:
-           traverseMapUp(loc,grid)
+        if numGo > 0:
+            currLoc = traverseMapUp(currLoc,grid)
+    return currLoc
 
 def traverseMapUp(loc,grid):
     unit_maploc = unit.location.map_location()
