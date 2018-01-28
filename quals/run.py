@@ -196,14 +196,14 @@ def tryMineKarbonite(unit):
 # return flattened location of walking down the grid from flatLoc, numGo times
 def traverseMap(loc,grid,numGo):
     currLoc = loc
-    for n in numGo:
+    for n in range(numGo):
         if numGo > 0:
             currLoc = traverseMapUp(currLoc,grid)
     return currLoc
 
 def traverseMapUp(loc,grid):
-    unit_maploc = unit.location.map_location()
-    loc = dmap.flattenMapLoc(unit_maploc)
+    # unit_maploc = unit.location.map_location()
+    # loc = dmap.flattenMapLoc(unit_maploc)
     largestLocs = [loc]
     largest = grid[loc]
     adjacents = dmap.adjacentInBounds(loc)
@@ -656,6 +656,40 @@ while True:
         MAGES_WANTED = 150 if STRAT == Strategy.MAGES else 0
 
         # Have everyone ditch combat and flee to the rockets after round 700
+
+        # Type: flattened coordinate
+        ROCKET_LOCATION_FOUND = False
+        ROCKET_LOCATION = None
+        ROCKET_ADJACENT_LOCATIONS = None
+        ROCKET_GRID = None
+        if ROCKETS_WANTED > numRockets and not ROCKET_LOCATION_FOUND:
+            unit_found = False
+            unit = None
+            # Ranger, Mage, Healer
+            if numRangers > 0:
+                # Find a random ranger
+                unit = rangers[0]
+                unit_found = True
+            elif numMages > 0:
+                # Same with mages
+                unit = mages[0]
+                unit_found = True
+            elif numHealers > 0:
+                unit = healers[0]
+                unit_found = True
+            elif numWorkers > 0:
+                unit = workers[0]
+                unit_found = True
+            elif numKnights > 0:
+                unit = knights[0]
+                unit_found = True
+
+            if unit_found:
+                loc = dmap.flattenMapLoc(unit.location.map_location())
+                ROCKET_GRID = dmap.dijkstraMap([[loc, 0]], WALL_GRAPH)
+                ROCKET_LOCATION = traverseMap(loc, ROCKET_GRID, 5)
+                ROCKET_ADJACENT_LOCATIONS = dmap.adjacentInBounds(ROCKET_LOCATION)
+
         FLEE_TO_MARS = numRockets > 0 and ROUND > 700 and gc.planet() == bc.Planet.Earth
         # pause combat unit production if we need rockets and either can't afford rockets or have no workers
         # (and need to produce workers from factories)
@@ -792,6 +826,8 @@ while True:
                 elif EARTH_KARBONITE_MAP[flatloc]<40:
                     # print("walked down")
                     walkDownMap(unit, EARTH_KARBONITE_MAP)
+                elif ROCKET_LOCATION != None:
+                    walkDownMap(unit, ROCKET_GRID)
                 # stay safe if nothing to do
                 else:
                     walkUpMap(unit,FLEE_MAP)
@@ -807,8 +843,13 @@ while True:
                 # Look for and mine Karbonite
                 elif tryMineKarbonite(unit):
                     nothing =  1
-                elif numRockets < ROCKETS_WANTED and tryBlueprint(unit, bc.UnitType.Rocket):
+                elif numRockets < ROCKETS_WANTED and  dmap.flattenMapLoc(unit.location.map_location()) in ROCKET_ADJACENT_LOCATIONS and tryBlueprint(unit, bc.UnitType.Rocket):
                     # print('blueprinted')
+                    location = unit.location.map_location()
+                    if not gc.is_occupiable(location):
+                        other = gc.sense_unit_at_location(location)
+                        if other.team == MY_TEAM:
+                            other.disintegrate()
                     numRockets += 1
 
                 # REPLICATION ==================================
