@@ -5,7 +5,8 @@ import traceback
 from enum import Enum
 import time
 import math
-import fakerocketmath as rocketmath
+import rocketmath
+#import fakerocketmath as rocketmath
 import dijkstramath as dmap
 
 
@@ -68,6 +69,9 @@ EARTH_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Earth, i % EARTH_WIDTH, int(i / E
 MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars, i % MARS_WIDTH, int(i / MARS_WIDTH)) for i in
                      range(MARS_WIDTH * MARS_HEIGHT)]
 
+orbitpattern = gc.orbit_pattern
+# b = (orbitpattern.center * math.pi) / 100
+rocketmath.setup(50, 2, 125)
 
 def MapLocation(planetEnum, x, y):
     if planetEnum == bc.Planet.Earth:
