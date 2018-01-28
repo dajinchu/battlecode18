@@ -155,19 +155,26 @@ def tryBlueprint(unit, blueprintType):
 
 # For Worker, try to build on nearby blueprints.
 # return true if we built and build is still in progress
-def tryBuildStructure(unit, blueprints):
+def tryBuildRepairStructures(unit, blueprints):
     # First try to build directly adjacent factories
-    structureToBuild = None
+    structureToWorkOn = None
     highestHealth = -1
     for s in blueprints:
         # Build the factory if it isn't already finished
         if s.health > highestHealth and unit.location.is_adjacent_to(s.location):
-            structureToBuild = s
+            structureToWorkOn = s
             highestHealth = s.health
-    if structureToBuild and gc.can_build(unit.id, structureToBuild.id):
-        gc.build(unit.id, structureToBuild.id)
+    if structureToWorkOn:
+        if structureToWorkOn.structure_is_built():
+            # already built, should repair
+            if gc.can_repair(unit.id, structureToWorkOn.id):
+                gc.repair(unit.id, structureToWorkOn.id)
+        else:
+            # unbuilt, build
+            if gc.can_build(unit.id, structureToWorkOn.id):
+                gc.build(unit.id, structureToWorkOn.id)
         # return true only if factory build is still in progress
-        return not structureToBuild.structure_is_built()
+        return not structureToWorkOn.structure_is_built()
     else:
         return False
 
@@ -186,39 +193,21 @@ def tryMineKarbonite(unit):
             return True
     return False
 
-# Finds a direction bringing you down the map
-def downMapDir(unit,grid):
-    unit_maploc = unit.location.map_location()
-    loc = dmap.flattenMapLoc(unit_maploc)
-    smallestLocs = [loc]
-    smallest = grid[loc]
-    adjacents = dmap.adjacentInBounds(loc)
-    for adj in adjacents:
-        if grid[adj] <= smallest and gc.is_occupiable(MapLocationFlat(unit_maploc.planet, adj)):
-            if grid[adj] == smallest:
-                # if it is equally small just append this loc
-                smallestLocs.append(adj)
-            else:
-                # it set a new bar for smallest, set the smallest value and reset smallestLocs
-                smallest = grid[adj]
-                smallestLocs = [adj]
-    # of all the good choices, pick a random one
-    randloc = random.choice(smallestLocs)
-    return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc))
+# return flattened location of walking down the grid from flatLoc, numGo times
+def traverseMap(loc,grid,numGo):
+    currLoc = loc
+    for n in numGo:
+       if numGo > 0:
+           traverseMapUp(loc,grid)
 
-# Move unit down a dijkstraMap
-def walkDownMap(unit, grid):
-    tryMove(unit, downMapDir(unit,grid))
-
-# Move unit up a dijkstraMap
-def walkUpMap(unit, grid):
+def traverseMapUp(loc,grid):
     unit_maploc = unit.location.map_location()
     loc = dmap.flattenMapLoc(unit_maploc)
     largestLocs = [loc]
     largest = grid[loc]
     adjacents = dmap.adjacentInBounds(loc)
     for adj in adjacents:
-        if grid[adj] >= largest and gc.is_occupiable(MapLocationFlat(unit_maploc.planet, adj)):
+        if grid[adj] <= largest and (adj in factoryLocs or gc.is_occupiable(MapLocationFlat(THIS_PLANETMAP.planet,adj))):
             if grid[adj] == largest:
                 # if it is equally small just append this loc
                 largestLocs.append(adj)
@@ -228,8 +217,44 @@ def walkUpMap(unit, grid):
                 largestLocs = [adj]
     # of all the good choices, pick a random one
     randloc = random.choice(largestLocs)
-    tryMove(unit, unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,randloc)))
+    return randloc
 
+def traverseMapDown(loc,grid):
+    smallestLocs = [loc]
+    smallest = grid[loc]
+    adjacents = dmap.adjacentInBounds(loc)
+    for adj in adjacents:
+        if grid[adj] <= smallest and (adj in factoryLocs or gc.is_occupiable(MapLocationFlat(THIS_PLANETMAP.planet,adj))):
+            if grid[adj] == smallest:
+                # if it is equally small just append this loc
+                smallestLocs.append(adj)
+            else:
+                # it set a new bar for smallest, set the smallest value and reset smallestLocs
+                smallest = grid[adj]
+                smallestLocs = [adj]
+    # of all the good choices, pick a random one
+    randloc = random.choice(smallestLocs)
+    return randloc
+
+# Finds a direction bringing you down the map
+def downMapDir(unit,grid):
+    unit_maploc = unit.location.map_location()
+    loc = traverseMapDown(dmap.flattenMapLoc(unit_maploc),grid)
+    return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,loc))
+
+# Finds a direction bringing you up the map
+def upMapDir(unit,grid):
+    unit_maploc = unit.location.map_location()
+    loc = traverseMapUp(dmap.flattenMapLoc(unit_maploc),grid)
+    return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,loc))
+
+# Move unit down a dijkstraMap
+def walkDownMap(unit, grid):
+    tryMove(unit, downMapDir(unit,grid))
+
+# Move unit up a dijkstraMap
+def walkUpMap(unit, grid):
+    tryMove(unit, upMapDir(unit,grid))
 
 # Move unit towards goal value on dijkstraMap
 def walkToValue(unit, grid, goalValue):
@@ -462,6 +487,7 @@ ID_GO_TO_ROCKET = set()
 #global var eh
 WORKERS_WANTED = 0
 FACTORIES_WANTED = 0
+factoryLocs = set()
 
 class Strategy(Enum):
     KNIGHT_RUSH = 1
@@ -474,7 +500,7 @@ STRAT = Strategy.RANGER_HEALER
 # DECIDE WHETHER OR NOT TO KNIGHT_RUSH
 if(gc.planet() == bc.Planet.Earth):
     for unit in EARTHMAP.initial_units:
-        if unit.team == MY_TEAM and ENEMY_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 15:
+        if unit.team == MY_TEAM and ENEMY_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 20:
             STRAT = Strategy.KNIGHT_RUSH
             break
 
@@ -501,19 +527,21 @@ while True:
         knights = []
         mages = []
         healers = []
+        factoryLocs = set()
         for unit in gc.my_units():
             if unit.location.is_on_planet(THIS_PLANETMAP.planet):
                 type = unit.unit_type
                 if type == bc.UnitType.Factory:
-                    if unit.structure_is_built():
-                        factories.append(unit)
-                    else:
+                    if unit.max_health > unit.health:
                         factoryBlueprints.append(unit)
+                    if unit.structure_is_built():
+                        factoryLocs.add(dmap.flattenMapLoc(unit.location.map_location()))
+                        factories.append(unit)
                 elif type == bc.UnitType.Rocket:
+                    if unit.max_health > unit.health:
+                        rocketBlueprints.append(unit)
                     if unit.structure_is_built():
                         rockets.append(unit)
-                    else:
-                        rocketBlueprints.append(unit)
                 elif type == bc.UnitType.Worker:
                     workers.append(unit)
                 elif type == bc.UnitType.Ranger:
@@ -581,6 +609,7 @@ while True:
                 factoryMapBench.start()
                 blueprintLocs = [f.location.map_location() for f in allBlueprints]
                 BLUEPRINT_MAP = adjacentToMap(blueprintLocs)
+                dmap.logMap(BLUEPRINT_MAP)
                 factoryMapBench.end()
 
             rocketMapBench.start()
@@ -713,6 +742,19 @@ while True:
                     walkDownMap(unit, ENEMY_MAP)
                 knightAttack(unit)
 
+        for unit in mages:
+            if unit.location.is_on_map():
+                loc = unit.location.map_location()
+                knightAttack(unit)
+                # Move towards enemies
+                if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
+                    walkDownMap(unit,ROCKET_MAP)
+                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
+                    walkUpMap(unit,FLEE_MAP)
+                else:
+                    walkDownMap(unit, ENEMY_MAP)
+                knightAttack(unit)
+
         healerBench.start()
         for unit in healers:
             # Ranger logic
@@ -755,7 +797,7 @@ while True:
 
                 # WORKER ACTIONS ==============================
                 # look for and work on blueprints
-                if tryBuildStructure(unit, allBlueprints):
+                if tryBuildRepairStructures(unit, allBlueprints):
                     nothing =  1
                     # do nothing
                 # Place blueprints if needed
