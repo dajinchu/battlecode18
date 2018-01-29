@@ -14,21 +14,20 @@ def setup(a1, b1, c1):
     a = a1
     b = b1
     c = c1
-    i = 0
-    while i < 1000:
+    for i in range(1000):
         roundMap[i] = orbitPatternFunction(i)
 
-    i = 0
-    while i < 1000:
-        bof = true
+    for i in range(1000):
+        bof = True
         curRound = roundMap[i]
         j = i
         while j < 999 and roundMap[j] < roundMap[j+1]:
             futureRound = roundMap[j]
             if(futureRound < curRound):
-                bof = false
+                bof = False
+            j += 1
 
-        shouldLaunch[i] = vof
+        shouldLaunch[i] = bof
 
     print (shouldLaunch)
 
@@ -44,5 +43,4 @@ def computeDestination(mars_width, mars_height, mars_walls):
         loc = random.randint(0,mars_width*mars_height-1)
 
     return loc
-
 

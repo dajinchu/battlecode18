@@ -71,7 +71,9 @@ MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars, i % MARS_WIDTH, int(i / MARS
 
 orbitpattern = gc.orbit_pattern
 # b = (orbitpattern.center * math.pi) / 100
+print("rocketmath setup starting")
 rocketmath.setup(50, 2, 125)
+print("rocketmath setup finished")
 
 def MapLocation(planetEnum, x, y):
     if planetEnum == bc.Planet.Earth:
