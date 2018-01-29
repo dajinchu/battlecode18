@@ -23,7 +23,7 @@ print("pystarted")
 random.seed(6137)
 
 # disable timing logs for production code
-TIMING_DISABLED = False
+TIMING_DISABLED = True
 
 # SPEC CONSTANTS
 REPLICATE_COST = 60
@@ -99,7 +99,7 @@ def occupiableDirections(loc):
 
 
 def randMoveDir(unit):
-    dirs = occupiableDirections(unit.location.map_location())
+    dirs = occupiableDirections(mapLocFromUnit(unit))
     if dirs:
         return random.choice(dirs)
     else:
@@ -112,8 +112,18 @@ def wander(unit):  # pick a random movable direction:
 
 
 def tryMove(unit, d):
-    if gc.is_move_ready(unit.id) and gc.can_move(unit.id, d):
-        gc.move_robot(unit.id, d)
+    if gc.is_move_ready(unit.id):
+        if gc.can_move(unit.id, d):
+            gc.move_robot(unit.id, d)
+        elif unit.location.is_in_garrison():
+            if gc.can_unload(unit.location.structure(),d):
+                gc.unload(unit.location.structure(),d)
+        else:
+            loc = unit.location.map_location().add(d)
+            if gc.can_sense_location(loc):
+                unit2 = gc.sense_unit_at_location(loc)
+                if gc.can_load(unit2.id, unit.id):
+                    gc.load(unit2.id, unit.id)
 
 
 def senseEnemies(loc, radius2):
@@ -193,22 +203,31 @@ def tryMineKarbonite(unit):
             return True
     return False
 
+def mapLocFromUnit(unit):
+    if unit.location.is_on_map():
+        unit_maploc = unit.location.map_location()
+    elif unit.location.is_in_garrison():
+        unit_maploc = gc.unit(unit.location.structure()).location.map_location()
+    else:
+        unit_maploc = None
+    return unit_maploc
+
 # return flattened location of walking down the grid from flatLoc, numGo times
 def traverseMap(loc,grid,numGo):
     currLoc = loc
-    for n in numGo:
+    for n in range(numGo):
         if numGo > 0:
             currLoc = traverseMapUp(currLoc,grid)
+        else:
+            currLoc = traverseMapDown(currLoc,grid)
     return currLoc
 
 def traverseMapUp(loc,grid):
-    unit_maploc = unit.location.map_location()
-    loc = dmap.flattenMapLoc(unit_maploc)
     largestLocs = [loc]
     largest = grid[loc]
     adjacents = dmap.adjacentInBounds(loc)
     for adj in adjacents:
-        if grid[adj] <= largest and (adj in factoryLocs or gc.is_occupiable(MapLocationFlat(THIS_PLANETMAP.planet,adj))):
+        if grid[adj] >= largest and (adj in factoryLocs or gc.is_occupiable(MapLocationFlat(THIS_PLANETMAP.planet,adj))):
             if grid[adj] == largest:
                 # if it is equally small just append this loc
                 largestLocs.append(adj)
@@ -238,28 +257,28 @@ def traverseMapDown(loc,grid):
     return randloc
 
 # Finds a direction bringing you down the map
-def downMapDir(unit,grid):
-    unit_maploc = unit.location.map_location()
+def downMapDir(unit_maploc,grid):
     loc = traverseMapDown(dmap.flattenMapLoc(unit_maploc),grid)
     return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,loc))
 
 # Finds a direction bringing you up the map
-def upMapDir(unit,grid):
-    unit_maploc = unit.location.map_location()
+def upMapDir(unit_maploc,grid):
     loc = traverseMapUp(dmap.flattenMapLoc(unit_maploc),grid)
     return unit_maploc.direction_to(MapLocationFlat(unit_maploc.planet,loc))
 
 # Move unit down a dijkstraMap
 def walkDownMap(unit, grid):
-    tryMove(unit, downMapDir(unit,grid))
+    unit_maploc = mapLocFromUnit(unit)
+    tryMove(unit, downMapDir(unit_maploc,grid))
 
 # Move unit up a dijkstraMap
 def walkUpMap(unit, grid):
-    tryMove(unit, upMapDir(unit,grid))
+    unit_maploc = mapLocFromUnit(unit)
+    tryMove(unit, upMapDir(unit_maploc,grid))
 
 # Move unit towards goal value on dijkstraMap
 def walkToValue(unit, grid, goalValue):
-    loc = unit.location.map_location()
+    loc = mapLocFromUnit(unit)
     x = loc.x
     y = loc.y
     if grid[x][y] > goalValue:
@@ -404,7 +423,7 @@ def manageResearch():
         gc.queue_research(bc.UnitType.Mage)
 
 def priorityAttack(unit, priorityList):
-    if gc.is_attack_ready(unit.id):
+    if gc.is_attack_ready(unit.id) and unit.location.is_on_map():
         enemies = senseEnemies(unit.location.map_location(), unit.attack_range())
         if enemies:
             target = enemies[0]
@@ -511,7 +530,7 @@ manageResearch()
 while True:
     ROUND = gc.round()
     # We only support Python 3, which means brackets around print()
-    if TIMING_DISABLED:
+    if not TIMING_DISABLED:
         print('pyround:', gc.round(), 'time left:', gc.get_time_left_ms(), 'ms')
     turnBench.start()
 
@@ -530,13 +549,14 @@ while True:
         healers = []
         factoryLocs = set()
         for unit in gc.my_units():
-            if unit.location.is_on_planet(THIS_PLANETMAP.planet):
+            if unit.location.is_on_planet(THIS_PLANETMAP.planet) or unit.location.is_in_garrison():
                 type = unit.unit_type
                 if type == bc.UnitType.Factory:
                     if unit.max_health > unit.health:
                         factoryBlueprints.append(unit)
                     if unit.structure_is_built():
-                        factoryLocs.add(dmap.flattenMapLoc(unit.location.map_location()))
+                        if len(unit.structure_garrison()) == 0:
+                            factoryLocs.add(dmap.flattenMapLoc(unit.location.map_location()))
                         factories.append(unit)
                 elif type == bc.UnitType.Rocket:
                     if unit.max_health > unit.health:
@@ -610,7 +630,6 @@ while True:
                 factoryMapBench.start()
                 blueprintLocs = [f.location.map_location() for f in allBlueprints]
                 BLUEPRINT_MAP = adjacentToMap(blueprintLocs)
-                dmap.logMap(BLUEPRINT_MAP)
                 factoryMapBench.end()
 
             rocketMapBench.start()
@@ -622,7 +641,7 @@ while True:
             rocketMapBench.end()
 
         # refresh karbonite map
-        if gc.get_time_left_ms() > 8000 or ROUND % 8 == 1:
+        if gc.get_time_left_ms() > 3000 or ROUND % 8 == 1:
             karboniteMapBench.start()
             EARTH_KARBONITE_MAP = updateKarbonite()
             karboniteMapBench.end()
@@ -719,11 +738,12 @@ while True:
         rangerBench.start()
         for unit in rangers:
             # Ranger logic
-            if unit.location.is_on_map():
+            if unit.location.is_on_map() or unit.location.is_in_garrison():
+                maploc = mapLocFromUnit(unit)
                 rangerAttack(unit)
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
-                elif unit.health < 170 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
+                elif unit.health < 170 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(maploc)] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 else:
                     walkDownMap(unit, RANGER_MAP)
@@ -731,26 +751,26 @@ while True:
         rangerBench.end()
 
         for unit in knights:
-            if unit.location.is_on_map():
-                loc = unit.location.map_location()
+            if unit.location.is_on_map() or unit.location.is_in_garrison():
+                maploc = mapLocFromUnit(unit)
                 knightAttack(unit)
                 # Move towards enemies
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
-                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
+                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(maploc)] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 else:
                     walkDownMap(unit, ENEMY_MAP)
                 knightAttack(unit)
 
         for unit in mages:
-            if unit.location.is_on_map():
-                loc = unit.location.map_location()
+            if unit.location.is_on_map() or unit.location.is_in_garrison():
+                loc = mapLocFromUnit(unit)
                 knightAttack(unit)
                 # Move towards enemies
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
-                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(unit.location.map_location())] < 3:
+                elif unit.health < 100 and ENEMY_RANGE_MAP[dmap.flattenMapLoc(loc)] < 3:
                     walkUpMap(unit,FLEE_MAP)
                 else:
                     walkDownMap(unit, ENEMY_MAP)
@@ -765,7 +785,8 @@ while True:
                         if gc.can_heal(unit.id, ally_id):
                             gc.heal(unit.id, ally_id)
                             break
-                loc = dmap.flattenMapLoc(unit.location.map_location())
+            if unit.location.is_on_map() or unit.location.is_in_garrison():
+                loc = dmap.flattenMapLoc(mapLocFromUnit(unit))
                 if unit.id in ID_GO_TO_ROCKET or FLEE_TO_MARS:
                     walkDownMap(unit,ROCKET_MAP)
                 elif HEALER_MAP[loc] == 100 or ENEMY_RANGE_MAP[loc] < 5:
@@ -777,8 +798,8 @@ while True:
         workerBench.start()
         # Worker logic
         for unit in workers:
-            if unit.location.is_on_map():
-                mloc = unit.location.map_location()
+            if unit.location.is_on_map() or unit.location.is_in_garrison():
+                mloc = mapLocFromUnit(unit)
                 flatloc = dmap.flattenMapLoc(mloc)
 
                 # MOVEMENT ====================================
@@ -796,6 +817,7 @@ while True:
                 else:
                     walkUpMap(unit,FLEE_MAP)
 
+            if unit.location.is_on_map():
                 # WORKER ACTIONS ==============================
                 # look for and work on blueprints
                 if tryBuildRepairStructures(unit, allBlueprints):
