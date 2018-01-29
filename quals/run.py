@@ -5,7 +5,8 @@ import traceback
 from enum import Enum
 import time
 import math
-import fakerocketmath as rocketmath
+import rocketmath
+#import fakerocketmath as rocketmath
 import dijkstramath as dmap
 
 
@@ -68,6 +69,11 @@ EARTH_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Earth, i % EARTH_WIDTH, int(i / E
 MARS_MAPLOCATIONS = [bc.MapLocation(bc.Planet.Mars, i % MARS_WIDTH, int(i / MARS_WIDTH)) for i in
                      range(MARS_WIDTH * MARS_HEIGHT)]
 
+orbitpattern = gc.orbit_pattern
+# b = (orbitpattern.center * math.pi) / 100
+print("rocketmath setup starting")
+rocketmath.setup(50, 2, 125)
+print("rocketmath setup finished")
 
 def MapLocation(planetEnum, x, y):
     if planetEnum == bc.Planet.Earth:
@@ -663,7 +669,6 @@ while True:
                 # if we've got enough factories, we can feel free to just get more workers, up until maxworkers
                 WORKERS_WANTED = min(WORKERS_WANTED + 1, maxworkers)
 
-        print('workers wanted',WORKERS_WANTED," max workers",maxworkers," karbonite",TOTAL_KARBONITE)
         if ROUND == 1:
             FACTORIES_WANTED = 3+math.ceil(TOTAL_KARBONITE/2000)
         elif FACTORIES_WANTED == numFactories and gc.karbonite()>300:
@@ -675,6 +680,22 @@ while True:
         MAGES_WANTED = 150 if STRAT == Strategy.MAGES else 0
 
         # Have everyone ditch combat and flee to the rockets after round 700
+
+        # Type: flattened coordinate
+        ROCKET_LOCATION_FOUND = False
+        ROCKET_GRID = None
+        if ROCKETS_WANTED > numRockets and not ROCKET_LOCATION_FOUND:
+            locs = []
+            for seq in [rangers,mages,healers,knights,workers]:
+                for unit in seq:
+                    locs.append([traverseMap(dmap.flattenMapLoc(mapLocFromUnit(unit)),FLEE_MAP,5),0])
+                    if len(locs) + numRockets >= ROCKETS_WANTED:
+                        break
+                if len(locs) + numRockets >= ROCKETS_WANTED:
+                    break
+
+            ROCKET_GRID = dmap.dijkstraMap(locs, WALL_GRAPH)
+
         FLEE_TO_MARS = numRockets > 0 and ROUND > 700 and gc.planet() == bc.Planet.Earth
         # pause combat unit production if we need rockets and either can't afford rockets or have no workers
         # (and need to produce workers from factories)
@@ -813,6 +834,8 @@ while True:
                 elif EARTH_KARBONITE_MAP[flatloc]<40:
                     # print("walked down")
                     walkDownMap(unit, EARTH_KARBONITE_MAP)
+                elif len(ROCKET_GRID) > 0 and ROCKET_GRID[flatloc] < 5:
+                    walkDownMap(unit, ROCKET_GRID)
                 # stay safe if nothing to do
                 else:
                     walkUpMap(unit,FLEE_MAP)
@@ -829,9 +852,9 @@ while True:
                 # Look for and mine Karbonite
                 elif tryMineKarbonite(unit):
                     nothing =  1
-                elif numRockets < ROCKETS_WANTED and tryBlueprint(unit, bc.UnitType.Rocket):
+                elif numRockets < ROCKETS_WANTED and ROCKET_GRID[dmap.flattenMapLoc(unit.location.map_location())]<=1:
+                    tryBlueprint(unit, bc.UnitType.Rocket)
                     # print('blueprinted')
-                    numRockets += 1
 
                 # REPLICATION ==================================
                 # 1. Replicate if needed
